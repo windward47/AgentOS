@@ -1,0 +1,54 @@
+# Rust / Cargo
+/target/
+Cargo.lock
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Tauri build artifacts
+src-tauri/target/
+*.app
+*.dmg
+*.deb
+*.AppImage
+*.msi
+*.rpm
+*.snap
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# Generated files
+dist/
+build/
+out/
+
+# Reasonix
+.reasonix/
+
+# Code intelligence index
+.codegraph/
+
+# IDE config
+.cursor/
