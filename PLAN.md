@@ -84,16 +84,22 @@ cd companion
 ```
 src-tauri/src/
 ├── main.rs              # 入口 + Tauri 启动
-├── audio/               # 音频捕获 + 播放（mod.rs 占位）
-├── asr/                 # ASR 接口（mod.rs 占位）
-├── tts/                 # TTS 接口（mod.rs 占位）
-├── llm/                 # LLM 接口（mod.rs 占位）
-├── tools/               # 工具层（mod.rs 占位）
-├── mcp/                 # MCP 协议（mod.rs 占位）
-├── sandbox/             # 沙盒路径检查（mod.rs 占位）
-├── permissions/         # 权限管理（mod.rs 占位）
-├── state/               # 全局状态（mod.rs 占位）
-└── websocket/           # WebSocket 服务（VR 预留，mod.rs 占位）
+├── lib.rs               # Tauri Builder + 模块声明
+├── config.rs            # 配置系统（~/.companion/config.json）
+├── state/               # 全局状态（AppState）
+├── agent/               # Agent 核心抽象（RPC 子进程驱动）
+│   ├── mod.rs           # AgentEngine trait
+│   └── omp_rpc.rs       # oh-my-pi RPC 客户端实现
+├── audio/               # 音频捕获 + 播放 / VAD
+├── asr/                 # ASR trait + 本地/云端实现
+├── tts/                 # TTS trait + 本地/云端实现
+├── emotion/             # 情绪识别 trait
+├── llm/                 # LLM trait（直接 API 降级方案）
+├── tools/               # 工具注册中心 + 内置工具
+├── mcp/                 # MCP 协议实现
+├── sandbox/             # 沙盒路径校验
+├── permissions/         # 权限管理
+└── websocket/           # WebSocket 服务（VR 预留）
 ```
 
 **脚手架前端：**
@@ -497,7 +503,102 @@ while let Some(chunk) = audio_stream.next().await {
 
 ---
 
-### Sprint 1.5 设置面板 + 集成联调（2 天）
+### Sprint 1.5 oh-my-pi RPC Agent 核心集成（3 天）
+
+> Agent 核心不再自研 LLM 编排，而是通过 RPC 子进程方式接入 **oh-my-pi** (omp)。
+> omp 负责：LLM 调用、工具选择、对话管理。Companion 负责：语音/感知/呈现。
+
+#### 任务 1.5.1 — omp RPC 子进程管理
+
+**文件：** `src-tauri/src/agent/omp_rpc.rs`
+
+```rust
+/// OmpRpcClient 生命周期
+pub struct OmpRpcClient {
+    child: Mutex<Option<ChildProcess>>,  // omp --mode rpc 子进程
+    next_id: AtomicU64,
+    binary: String,                       // "omp" (from PATH or configured path)
+}
+
+impl OmpRpcClient {
+    /// 启动子进程
+    pub async fn spawn(&self) -> Result<(), AgentError>;
+
+    /// 发送 prompt，等待完整回复
+    pub async fn chat(&self, message: &str, history: &[ConversationMessage]) -> Result<AgentResponse>;
+
+    /// Stream 版本（用于实时 TTS）
+    pub async fn chat_stream(&self, message: &str, history: &[ConversationMessage])
+        -> Result<Receiver<AgentStreamEvent>>;
+
+    /// 切换模型（provider + modelId）
+    pub async fn set_model(&self, provider: &str, model_id: &str) -> Result<(), AgentError>;
+
+    /// 关闭子进程
+    pub async fn shutdown(&self);
+}
+```
+
+**通信协议（NDJSON over stdio）：**
+
+| 方向 | 帧类型 | 用途 |
+|------|--------|------|
+| → | `{"id":"r1","type":"prompt","message":"..."}` | 发送用户消息 |
+| ← | `{"id":"r1","type":"response","message":{"content":"..."}}` | 接收回复 |
+| → | `{"id":"r2","type":"set_model","provider":"...","modelId":"..."}` | 切换模型 |
+| → | `{"id":"r3","type":"abort"}` | 终止当前生成 |
+| ← | `{"id":"r1","type":"error","error":"..."}` | 错误帧 |
+
+#### 任务 1.5.2 — AgentEngine trait 统一接口
+
+**文件：** `src-tauri/src/agent/mod.rs`
+
+```rust
+#[async_trait]
+pub trait AgentEngine: Send + Sync {
+    async fn chat(&self, message: &str, history: &[ConversationMessage])
+        -> Result<AgentResponse, AgentError>;
+
+    async fn chat_stream(&self, message: &str, history: &[ConversationMessage])
+        -> Result<Receiver<AgentStreamEvent>, AgentError>;
+}
+
+pub enum AgentStreamEvent {
+    Token(String),
+    ToolStarted { name: String },
+    ToolCompleted { name: String, result: String },
+    Done,
+    Error(String),
+}
+```
+
+#### 任务 1.5.3 — omp 安装检查与自动配置
+
+- 首次启动检查 `omp` 是否在 `$PATH` 中
+- 如果未安装，显示引导提示（安装命令：`curl -fsSL https://omp.sh/install | sh`）
+- 通过 `omp --version` 验证版本 ≥ 1.3.14
+- 在 `config.json` 中保存 `agent_binary` 路径
+
+#### 任务 1.5.4 — 降级方案：直接 LLM API
+
+如果 omp 不可用，提供 DirectLlm 实现作为降级（直接调用 OpenAI/Ollama API），
+确保在没有 omp 的情况下核心对话功能仍可运行。
+
+**文件：** `src-tauri/src/agent/direct_llm.rs`（后续 Sprint 实现，先留占位）
+
+**Sprint 1.5 验收：**
+
+- [ ] `OmpRpcClient::spawn()` 启动 omp 子进程成功
+- [ ] `chat()` 发送 prompt 并收到回复
+- [ ] 子进程退出后自动检测并报告错误
+- [ ] `set_model()` 成功切换模型
+- [ ] `shutdown()` 正确终止子进程
+- [ ] 缺少 omp 时降级提示清晰
+- [ ] `cargo test` 全部通过
+
+---
+
+### Sprint 1.6 设置面板 + 集成联调（2 天）
 
 #### 任务 1.5.1 — 设置面板 UI
 
@@ -1126,18 +1227,18 @@ cargo tauri build --bundler appimage,deb
 
 ## 6. 里程碑总览
 
-| 里程碑 | 时间 | 交付物 | 验证方式 |
-|--------|------|--------|----------|
-| **M0** | Day 0~3 | 项目骨架 + trait 定义 + 配置系统 | `cargo build` 通过 |
-| **M1** | Week 1~2 | 文字对话 + 沙盒工具 + 设置面板 | 端到端文本对话操作沙盒 |
-| **M2** | Week 2~3 | 语音输入+VAD+ASR → 对话 | 说话 → 文字 → LLM 回复 |
-| **M3** | Week 3~4 | Live2D 形象 + 嘴型同步 | 形象显示在窗口中，说话时嘴动 |
-| **M4** | Week 4~5 | 实时打断 + 本地 TTS | TTS 播放时说话立即停止 |
-| **M5** | Week 5~6 | 浏览器控制 + 系统模式 | Agent 打开网页并截图 |
-| **M6** | Week 6~8 | 情绪识别 + 风格系统 + MCP 加载器 | 情绪驱动回复风格 |
-| **M7** | Week 8~9 | 社区商店雏形 | 安装/卸载社区工具 |
-| **M8** | Week 9~11 | VR 模式原型 | Godot 显示 VRM 并连接后端 |
-| **M9** | Week 11~12 | 跨平台打包 + 性能优化 | 安装包可分发安装 |
+| 里程碑 | 时间 | 交付物 | 验证方式 | 状态 |
+|--------|------|--------|----------|------|
+| **M0** | Day 0~3 | 项目骨架 + trait 定义 + 配置系统 | `cargo build` 通过 | ✅ |
+| **M1** | Week 1~2 | 文字对话 + 沙盒工具 + 设置面板 | 端到端文本对话操作沙盒 | ✅ |
+| **M2** | Week 2~3 | 语音输入+VAD+ASR → 对话 | 说话 → 文字 → LLM 回复 | ✅ |
+| **M3** | Week 3~4 | Live2D 形象 + 嘴型同步 | 形象显示在窗口中，说话时嘴动 | ✅ |
+| **M4** | Week 4~5 | 实时打断 + 本地 TTS | TTS 播放时说话立即停止 | 📋 |
+| **M5** | Week 5~6 | 浏览器控制 + 系统模式 | Agent 打开网页并截图 | 📋 |
+| **M6** | Week 6~8 | 情绪识别 + 风格系统 + MCP 加载器 | 情绪驱动回复风格 | 📋 |
+| **M7** | Week 8~9 | 社区商店雏形 | 安装/卸载社区工具 | 📋 |
+| **M8** | Week 9~11 | VR 模式原型 | Godot 显示 VRM 并连接后端 | 📋 |
+| **M9** | Week 11~12 | 跨平台打包 + 性能优化 | 安装包可分发安装 | 📋 |
 
 **总预计：12 周（3 个月）单人全职开发。** 周末/业余时间开发预计 6 个月。
 
@@ -1147,7 +1248,9 @@ cargo tauri build --bundler appimage,deb
 
 | 风险 | 概率 | 影响 | 缓解措施 |
 |------|------|------|----------|
-| OpenCode serve 模式不稳定 | 中 | 高 | 备选 Oh My Pi；或自研极简 Agent 核心 |
+| omp RPC 协议版本不兼容 | 中 | 高 | 锁定 omp 版本范围；备选直接 LLM API 降级方案 |
+| omp 在用户系统上未安装 | 高 | 高 | 首次运行引导安装；提供 `companion install-agent` 命令 |
+| omp 子进程崩溃/挂死 | 中 | 高 | 心跳检测 + 自动重启；超时强制终止 |
 | Whisper.cpp Rust FFI 绑定复杂 | 高 | 中 | 先走子进程调用（稳定），后续替换为 FFI |
 | ChatTTS 内存占用高 | 中 | 中 | 备选 Edge TTS（HTTP）；后期可换 Piper TTS |
 | Live2D 授权问题（商业使用）| 低 | 中 | 仅使用 CC0 / 开源免费模型；不捆绑商业模型 |

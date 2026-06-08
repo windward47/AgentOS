@@ -11,6 +11,7 @@ pnpm-debug.log*
 
 # Tauri build artifacts
 src-tauri/target/
+src-tauri/gen/
 *.app
 *.dmg
 *.deb
@@ -43,6 +44,10 @@ desktop.ini
 dist/
 build/
 out/
+web/dist/
+
+# Large bundled JS (PixiJS)
+web/src/assets/
 
 # Reasonix
 .reasonix/
