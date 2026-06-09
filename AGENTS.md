@@ -45,26 +45,26 @@ curl -fsSL https://omp.sh/install | sh
 
 ```
 src-tauri/src/
-├── agent/          AgentEngine trait + OmpRpcClient (omp RPC subprocess)
-├── audio/          AudioCapture (cpal mic + ring buffer) + VAD (state machine)
-├── asr/            AsrProvider trait + WhisperLocal/WhisperCloud
-├── config.rs       ConfigManager: ~/.companion/config.json (auto-create/load/save)
-├── emotion/        EmotionEngine trait (预留)
-├── llm/            ChatLlm trait (direct API fallback, 预留)
-├── mcp/            McpTool trait (tool interface)
-├── permissions/    (预留)
-├── sandbox/        Sandbox::resolve() — path canonicalization + escape detection
-├── state/          AppState + 6 Tauri IPC commands
-├── tools/          ToolRegistry + 5 built-in tools (4 file + 1 command)
-├── tts/            TtsProvider trait + mock (预留)
-└── websocket/      WebSocket server (VR 预留)
+  agent/          AgentEngine trait + OmpRpcClient (omp -p subprocess)
+  audio/          AudioCapture (cpal mic + ring buffer) + VAD (4-state)
+  asr/            AsrProvider + WhisperLocal/WhisperCloud/XiaomiAsr
+  config.rs       ConfigManager: ~/.companion/config.json
+  emotion/        EmotionEngine trait (预留)
+  llm/            ChatLlm trait (direct API fallback, 预留)
+  mcp/            McpTool trait
+  permissions/    (预留)
+  sandbox/        Sandbox::resolve() — path canonicalization + escape
+  state/          AppState + 8 Tauri IPC commands
+  tools/          ToolRegistry + 5 built-in tools
+  tts/            TtsProvider + XiaomiTts + mock
+  websocket/      WebSocket server (VR 预留)
 
 web/src/
-├── views/          ChatView.vue (chat + Live2D side panel), SettingsView.vue
-├── components/     Live2DCanvas.vue (PixiJS + Live2D model)
-├── router/         / (chat) + /settings
-├── stores/         Pinia app store
-└── types/          IPC event type definitions
+  views/          ChatView.vue, SettingsView.vue, AvatarView.vue
+  components/     Live2DCanvas.vue
+  router/         / (chat), /settings, /avatar
+  stores/         Pinia app store (messages, sending state)
+  types/          IPC event type definitions (AudioLevelEvent, etc.)
 ```
 
 **Key design**: All ML/AI modules (ASR, TTS, Emotion) define Rust traits in their `mod.rs`.
@@ -77,7 +77,8 @@ Local and cloud implementations live in sibling files. Runtime switching via con
 | `chat` | `message: string` | `string` |
 | `get_history` | — | `Vec<ConversationMessage>` |
 | `clear_history` | — | `()` |
-| `transcribe_audio` | `audio: Vec<f32>` | `string` |
+| `transcribe_audio` | `audio: Vec<f32>` (16kHz mono PCM) | `string` |
+| `synthesize_audio` | `text: string, voice?: string` | `Vec<f32>` (PCM f32 mono) |
 | `get_config` | — | `CompanionConfig` |
 | `update_config` | `config: CompanionConfig` | `()` |
 
@@ -158,6 +159,12 @@ Live2D 不应该和聊天 UI 挤在同一个 Vue 组件里。正确做法：
 - 404 资源路径
 
 每次提交前跑 `npm run test:ui`，每次怀疑 UI 问题时先截图。
+
+### 6. 非标准 API 端点必须实测
+
+小米 Token Plan 的 ASR/TTS 模型列在 `/v1/models` 中，但 `/v1/audio/transcriptions` 和 `/v1/audio/speech`（OpenAI 标准端点）都是 404。
+实际的 ASR/TTS 接口是 `/v1/chat/completions`——通过 `input_audio` 和 `audio` modality 参数实现。
+**不会 curl 实测就直接开始写代码，必然走弯路。**
 
 ## Notes
 

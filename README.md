@@ -114,7 +114,8 @@ AgentOS/
 | `chat` | `message: string` | `string` | 发送消息给 Agent |
 | `get_history` | 无 | `ConversationMessage[]` | 获取对话历史 |
 | `clear_history` | 无 | `()` | 清空对话历史 |
-| `transcribe_audio` | `audio: number[]` (f32 PCM) | `string` | 语音转文字 |
+| `transcribe_audio` | `audio: number[]` (16kHz PCM) | `string` | 语音转文字 (Xiaomi ASR) |
+| `synthesize_audio` | `text: string, voice?: string` | `number[]` (PCM) | 文字转语音 (Xiaomi TTS) |
 | `get_config` | 无 | `CompanionConfig` | 获取当前配置 |
 | `update_config` | `config: CompanionConfig` | `()` | 更新配置 |
 
@@ -122,12 +123,13 @@ AgentOS/
 
 - **前端框架**: Tauri 2.0 + Vue 3 + Vite + Tailwind CSS
 - **后端语言**: Rust
-- **Agent 后端**: oh-my-pi (`omp --mode rpc`)
-- **Live2D 渲染**: PixiJS 7 + pixi-live2d-display
-- **ASR**: Whisper.cpp (本地) / OpenAI Whisper API (云端)
-- **麦克风捕获**: cpal
-- **VAD**: 基于 RMS 能量的四态状态机
-- **工具协议**: MCP (JSON-RPC over stdio/WebSocket) / omp 内置
+- **Agent 后端**: oh-my-pi (`omp -p` 同步子进程)
+- **LLM 模型**: SiliconFlow Nex-N2-Pro (免费) / Xiaomi MiMo V2.5 Pro
+- **Live2D 渲染**: 独立透明 Tauri 窗口 + PixiJS 7 + pixi-live2d-display + Cubism Core
+- **ASR**: Xiaomi MiMo V2.5 ASR (Chat Completions API)
+- **TTS**: Xiaomi MiMo V2.5 TTS (Chat Completions API, 9种声音)
+- **VAD**: 基于 RMS 能量的四态状态机 + 浏览器 MediaRecorder
+- **工具协议**: omp 内置工具 + MCP 扩展预留
 - **许可协议**: MIT
 
 ## 快速开始

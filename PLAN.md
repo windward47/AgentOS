@@ -364,76 +364,50 @@ pub struct CommandTool {
 
 ---
 
-### Sprint 1.3 麦克风捕获 + VAD + ASR（4 天）
+### Sprint 1.3 麦克风捕获 + VAD + ASR + TTS（已实现 ✅）
 
-#### 任务 1.3.1 — 音频捕获
+> ASR 和 TTS 通过小米 Token Plan 的 Chat Completions 端点实现（无需 OpenAI API Key）。
+> `mimo-v2.5-asr` 用于语音转文字，`mimo-v2.5-tts` 用于文字转语音（9 种声音）。
+> 录音由浏览器 `MediaRecorder` API 处理，播放由 `AudioContext.createBufferSource()` 处理。
 
-**文件：** `src-tauri/src/audio/capture.rs`
+#### 任务 1.3.1 — AudioCapture（Rust 后端，预留）
 
-```rust
-pub struct AudioCapture {
-    stream: Option<cpal::Stream>,
-    buffer: Arc<Mutex<VecDeque<f32>>>,  // 循环缓冲区，保留最近 2 秒
-}
+**文件：** `src-tauri/src/audio/capture.rs` — cpal 麦克风 + 2s 环形缓冲区。
 
-impl AudioCapture {
-    pub fn start(sample_rate: u32) -> Result<Self>;
-    pub fn stop(&mut self);
-    pub fn read_chunk(&self, duration_ms: u32) -> Vec<f32>; // 读取最近的音频片段
-}
-```
+#### 任务 1.3.2 — VAD 状态机
 
-**依赖：** `cpal`（跨平台音频输入）
+**文件：** `src-tauri/src/audio/vad.rs` — 四态 VAD：Idle→SpeechStart→Speaking→Silence→Idle，基于 RMS 能量检测。
 
-#### 任务 1.3.2 — VAD（语音活动检测）
+#### 任务 1.3.3 — Xiaomi ASR (`mimo-v2.5-asr`)
 
-**文件：** `src-tauri/src/audio/vad.rs`
+**文件：** `src-tauri/src/asr/xiaomi_asr.rs`
 
-```rust
-pub struct Vad {
-    engine: Box<dyn VadEngine>,
-    min_speech_ms: u32,         // 默认 300ms
-    silence_timeout_ms: u32,    // 默认 500ms 静音结束语句
-    threshold: f32,             // 默认 0.3
-}
-```
+PCM f32 → WAV base64 data URL → Chat Completions API（`input_audio` 类型）→ 文本。
 
-**实现路径：**
+#### 任务 1.3.4 — Xiaomi TTS (`mimo-v2.5-tts`)
 
-1. **快速版（1 天）**：基于音量的简单 VAD（计算 RMS，超阈值即判定为说话）
-2. **完整版（可后续迭代）**：集成 `silero-vad` 或 `webrtcvad` 的 Rust 绑定
+**文件：** `src-tauri/src/tts/xiaomi_tts.rs`
 
-#### 任务 1.3.3 — ASR 实现
+文本 → Chat Completions API（`audio` modality + assistant role）→ base64 WAV → PCM f32。
+**9 种声音**: `mimo_default`, `冰糖`, `茉莉`, `苏打`, `白桦`, `Mia`, `Chloe`, `Milo`, `Dean`。
 
-**文件：** `src-tauri/src/asr/`
+#### 任务 1.3.5 — 前端语音 UI
 
-| 文件 | 内容 |
+**文件：** `web/src/views/ChatView.vue`
+
+| 功能 | 说明 |
 |------|------|
-| `mod.rs` | `AsrProvider` trait 重新导出 |
-| `whisper_local.rs` | 调用 Whisper.cpp 子进程 |
-| `whisper_cloud.rs` | OpenAI Whisper API |
-
-**本地方案（阶段一先选一个实现）：**
-
-```rust
-// whisper_local.rs — 通过子进程调用 whisper.cpp
-pub struct WhisperLocal {
-    binary_path: PathBuf,   // whisper.cpp 编译产物路径
-    model_path: PathBuf,    // ggml-model.bin
-    temp_dir: PathBuf,
-}
-
-// 流程：将音频保存为 temp.wav → 调用子进程 → 解析 stdout
-```
+| 🎤 按钮 | 输入框左侧，点击开始/停止录音 |
+| 模式切换 | `💬 Real-time chat`（说话→自动发送）/ `📝 Dictation`（说话→插入光标） |
+| 🔊 Listen | 每条 AI 回复下方，点击 TTS 朗读该条消息 |
 
 **Sprint 1.3 验收：**
 
-- [ ] 麦克风录制并读取音频缓冲区
-- [ ] 简单音量 VAD 能检测到说话/静音
-- [ ] 语音片段送入 ASR 返回文本
-- [ ] 端到端：说话 → 文本显示在聊天界面
-
----
+- [x] 麦克风录制并读取音频缓冲区
+- [x] VAD 能检测到说话/静音
+- [x] 语音片段送入 ASR 返回文本
+- [x] TTS 能朗读 AI 回复
+- [x] 语音模式和文本输入模式可切换---
 
 ### Sprint 1.4 Live2D 形象（实际方案，已完成） 🔄
 
