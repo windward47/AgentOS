@@ -65,3 +65,4 @@ web/test-results/
 # Temp files
 tmp/
 nul
+web/.vite/
