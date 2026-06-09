@@ -39,8 +39,9 @@ pub fn run() {
             state::get_history,
             state::clear_history,
             state::transcribe_audio,
+            state::synthesize_audio,
             state::get_config,
-            state::update_config,
+            state::update_config
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();

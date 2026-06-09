@@ -5,26 +5,42 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -b && vite build",
-    "preview": "vite preview"
+    "build": "vue-tsc -b && vite build && node -e \"const{cpSync}=require('fs');['live2d','avatar-agent','tauri-api'].forEach(d=>{try{cpSync('public/'+d,'dist/'+d,{recursive:true})}catch{}})\"",
+    "preview": "vite preview",
+    "test:ui": "playwright test",
+    "test:ui:headed": "playwright test --headed",
+    "verify": "npm run build && playwright test"
   },
   "dependencies": {
+    "@pixi/app": "^7.4.3",
+    "@pixi/assets": "^7.4.3",
+    "@pixi/color": "^7.4.3",
+    "@pixi/constants": "^7.4.3",
+    "@pixi/core": "^7.4.3",
+    "@pixi/display": "^7.4.3",
+    "@pixi/math": "^7.4.3",
+    "@pixi/runner": "^7.4.3",
+    "@pixi/settings": "^7.4.3",
+    "@pixi/spritesheet": "^7.4.3",
+    "@pixi/ticker": "^7.4.3",
+    "@pixi/utils": "^7.4.3",
     "@tailwindcss/vite": "^4.3.0",
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/cli": "^2.11.2",
     "pinia": "^2.3.1",
-    "pixi-live2d-display": "^0.4.0",
-    "pixi.js": "^7.4.3",
     "tailwindcss": "^4.3.0",
     "vue": "^3.5.34",
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
+    "@jackwener/opencli": "^1.8.3",
+    "@playwright/test": "^1.60.0",
     "@types/node": "^24.12.3",
-    "@vitejs/plugin-vue": "^6.0.6",
+    "@vitejs/plugin-vue": "^6.0.7",
     "@vue/tsconfig": "^0.9.1",
+    "playwright": "^1.60.0",
     "typescript": "~6.0.2",
-    "vite": "^8.0.12",
+    "vite": "^7.3.5",
     "vue-tsc": "^3.2.8"
   }
 }

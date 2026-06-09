@@ -4,16 +4,9 @@ import { invoke } from '@tauri-apps/api/core'
 import { useRouter } from 'vue-router'
 
 interface Config {
-  sandbox_path: string
-  llm_provider: string
-  asr_provider: string
-  tts_provider: string
-  system_mode: boolean
-  enable_accessibility: boolean
-  vad_threshold: number
-  user_name: string
-  style_template: string
-  custom_system_prompt: string | null
+  sandbox_path: string; llm_provider: string; asr_provider: string; tts_provider: string
+  system_mode: boolean; enable_accessibility: boolean; vad_threshold: number
+  user_name: string; style_template: string; custom_system_prompt: string | null
   emotion_mapping: Record<string, string>
 }
 
@@ -22,146 +15,154 @@ const config = ref<Config | null>(null)
 const saving = ref(false)
 const saved = ref(false)
 
-const providerOptions = ['openai', 'ollama', 'claude']
-const asrOptions = ['local', 'cloud']
-const ttsOptions = ['local', 'cloud']
-const styleOptions = ['professional', 'humorous', 'gentle', 'geek']
-
 onMounted(async () => {
-  try {
-    config.value = await invoke<Config>('get_config')
-  } catch (e) {
-    console.error('Failed to load config:', e)
+  try { config.value = await invoke<Config>('get_config') } catch {
+    // Running without Tauri — use defaults
+    config.value = {
+      sandbox_path: '~/.companion/sandbox', llm_provider: 'siliconflow', asr_provider: 'local', tts_provider: 'local',
+      system_mode: false, enable_accessibility: false, vad_threshold: 0.3,
+      user_name: 'User', style_template: 'professional', custom_system_prompt: null,
+      emotion_mapping: {},
+    }
   }
 })
 
 async function save() {
   if (!config.value) return
-  saving.value = true
-  saved.value = false
-  try {
-    await invoke('update_config', { config: config.value })
-    saved.value = true
-    setTimeout(() => { saved.value = false }, 2000)
-  } catch (e) {
-    console.error('Failed to save config:', e)
-  } finally {
-    saving.value = false
-  }
-}
-
-function confirmSystemMode() {
-  if (config.value?.system_mode) {
-    if (!confirm('Switch to System Mode? Tools can access any file path. Proceed?')) {
-      config.value!.system_mode = false
-    }
-  }
+  saving.value = true; saved.value = false
+  try { await invoke('update_config', { config: config.value }); saved.value = true; setTimeout(() => saved.value = false, 2000) }
+  catch {} finally { saving.value = false }
 }
 </script>
 
 <template>
-  <div class="p-6 max-w-2xl mx-auto overflow-y-auto h-full">
-    <div class="flex items-center justify-between mb-6">
-      <h1 class="text-xl font-bold text-gray-800 dark:text-gray-100">Settings</h1>
-      <div class="flex gap-2">
-        <span v-if="saved" class="text-xs text-green-500 self-center">Saved</span>
-        <button @click="router.push('/')" class="text-xs text-gray-400 hover:text-gray-600 px-2">Back to Chat</button>
+  <div class="flex flex-col h-full overflow-y-auto bg-gray-50">
+    <!-- Header -->
+    <div class="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white border-b border-gray-200">
+      <h1 class="text-lg font-semibold text-gray-900">Settings</h1>
+      <div class="flex items-center gap-3">
+        <span v-if="saved" class="text-xs text-emerald-600 font-medium bg-emerald-50 px-2 py-1 rounded-full">✓ Saved</span>
+        <button @click="router.push('/')" class="text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">← Back</button>
       </div>
     </div>
 
-    <div v-if="!config" class="text-gray-400 text-center py-12">Loading...</div>
+    <div v-if="!config" class="flex-1 flex items-center justify-center text-gray-400">Loading...</div>
 
-    <div v-else class="space-y-6">
-      <!-- User -->
-      <section class="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
-        <h2 class="text-sm font-semibold text-gray-500 uppercase mb-3">Profile</h2>
-        <div class="space-y-3">
+    <!-- Sections — Tailwind Plus Form Layout style: stacked card sections -->
+    <div v-else class="max-w-2xl mx-auto w-full px-6 py-6 space-y-6">
+      <!-- Profile -->
+      <section class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+          <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Profile</h2>
+        </div>
+        <div class="p-5 space-y-4">
           <div>
-            <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">User Name</label>
-            <input v-model="config.user_name" type="text" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">User Name</label>
+            <input v-model="config.user_name" class="block w-full rounded-lg border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm placeholder:text-gray-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors" />
           </div>
           <div>
-            <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Style Template</label>
-            <select v-model="config.style_template" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
-              <option v-for="s in styleOptions" :key="s" :value="s">{{ s }}</option>
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">Conversation Style</label>
+            <select v-model="config.style_template" class="block w-full rounded-lg border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors">
+              <option value="professional">Professional</option>
+              <option value="humorous">Humorous</option>
+              <option value="gentle">Gentle Companion</option>
+              <option value="geek">Hardcore Geek</option>
             </select>
           </div>
         </div>
       </section>
 
       <!-- Providers -->
-      <section class="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
-        <h2 class="text-sm font-semibold text-gray-500 uppercase mb-3">Providers</h2>
-        <div class="grid grid-cols-3 gap-4">
+      <section class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+          <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">AI Providers</h2>
+        </div>
+        <div class="p-5 grid grid-cols-3 gap-5">
           <div>
-            <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">LLM</label>
-            <select v-model="config.llm_provider" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
-              <option v-for="p in providerOptions" :key="p" :value="p">{{ p }}</option>
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">LLM Model</label>
+            <select v-model="config.llm_provider" class="block w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors">
+              <option value="siliconflow">Nex-N2-Pro 🆓</option>
+              <option value="xiaomi">MiMo V2.5 Pro</option>
+              <option value="openai">OpenAI</option>
+              <option value="ollama">Ollama (Local)</option>
+              <option value="claude">Claude</option>
             </select>
           </div>
           <div>
-            <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">ASR</label>
-            <select v-model="config.asr_provider" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
-              <option v-for="p in asrOptions" :key="p" :value="p">{{ p }}</option>
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">ASR (Speech)</label>
+            <select v-model="config.asr_provider" class="block w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors">
+              <option value="xiaomi">Xiaomi (MiMo)</option>
+              <option value="local">Whisper (Local)</option>
+              <option value="cloud">Whisper (Cloud)</option>
             </select>
           </div>
           <div>
-            <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">TTS</label>
-            <select v-model="config.tts_provider" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
-              <option v-for="p in ttsOptions" :key="p" :value="p">{{ p }}</option>
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">TTS (Voice)</label>
+            <select v-model="config.tts_provider" class="block w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors">
+              <option value="xiaomi">Xiaomi (MiMo)</option>
+              <option value="local">ChatTTS (Local)</option>
+              <option value="cloud">Azure TTS</option>
             </select>
           </div>
         </div>
       </section>
 
-      <!-- Sandbox & Security -->
-      <section class="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
-        <h2 class="text-sm font-semibold text-gray-500 uppercase mb-3">Sandbox & Security</h2>
-        <div class="space-y-3">
+      <!-- Sandbox -->
+      <section class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+          <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Sandbox & Security</h2>
+        </div>
+        <div class="p-5 space-y-4">
           <div>
-            <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Sandbox Path</label>
-            <input v-model="config.sandbox_path" type="text" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm font-mono" />
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">Sandbox Path</label>
+            <input v-model="config.sandbox_path" class="block w-full rounded-lg border border-gray-200 px-3.5 py-2.5 text-sm font-mono shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors" />
           </div>
-          <div class="flex items-center justify-between">
-            <span class="text-sm text-gray-600 dark:text-gray-400">System Mode</span>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input v-model="config.system_mode" type="checkbox" class="sr-only peer" @click="confirmSystemMode" />
-              <div class="w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"></div>
-            </label>
+          <div class="flex items-center justify-between py-1">
+            <div>
+              <div class="text-sm font-medium text-gray-900">System Mode</div>
+              <div class="text-xs text-gray-500 mt-0.5">Allow unrestricted file system access</div>
+            </div>
+            <button type="button" @click="config!.system_mode = !config!.system_mode"
+              :class="['relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none',
+                       config.system_mode ? 'bg-orange-500' : 'bg-gray-200']">
+              <span :class="['pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200',
+                            config.system_mode ? 'translate-x-5' : 'translate-x-0']" />
+            </button>
           </div>
         </div>
       </section>
 
       <!-- VAD -->
-      <section class="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
-        <h2 class="text-sm font-semibold text-gray-500 uppercase mb-3">Voice Activity Detection</h2>
-        <div>
-          <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">
-            VAD Threshold: {{ config.vad_threshold.toFixed(2) }}
+      <section class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+          <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Voice Detection</h2>
+        </div>
+        <div class="p-5">
+          <label class="block text-sm font-medium text-gray-700 mb-2">
+            VAD Threshold — <span class="text-gray-500 font-normal">{{ config.vad_threshold.toFixed(2) }}</span>
           </label>
-          <input v-model.number="config.vad_threshold" type="range" min="0" max="1" step="0.05" class="w-full" />
+          <input v-model.number="config.vad_threshold" type="range" min="0" max="1" step="0.05"
+            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500" />
+          <div class="flex justify-between text-[11px] text-gray-400 mt-1"><span>Sensitive</span><span>Strict</span></div>
         </div>
       </section>
 
       <!-- Custom Prompt -->
-      <section class="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
-        <h2 class="text-sm font-semibold text-gray-500 uppercase mb-3">Custom System Prompt</h2>
-        <textarea
-          v-model="config.custom_system_prompt"
-          rows="4"
-          class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm font-mono"
-          placeholder="Optional: override system prompt. Variables: {user_name} {current_time} {emotion}"
-        ></textarea>
-        <p class="text-xs text-gray-400 mt-1">Variables: {'{user_name}'} {'{current_time}'} {'{emotion}'}</p>
+      <section class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+          <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Custom System Prompt</h2>
+        </div>
+        <div class="p-5">
+          <textarea v-model="config.custom_system_prompt" rows="4" placeholder="Optional — override the system prompt.&#10;Variables: {user_name} {current_time} {emotion}"
+            class="block w-full rounded-lg border border-gray-200 px-3.5 py-2.5 text-sm font-mono shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors resize-y" />
+          <p class="text-xs text-gray-400 mt-2">Variables: {'{user_name}'} {'{current_time}'} {'{emotion}'}</p>
+        </div>
       </section>
 
-      <!-- Save -->
+      <!-- Save button -->
       <div class="flex justify-end pb-8">
-        <button
-          @click="save"
-          :disabled="saving"
-          class="px-6 py-2.5 rounded-xl bg-blue-500 text-white text-sm font-medium disabled:opacity-40 hover:bg-blue-600 transition-all"
-        >
+        <button @click="save" :disabled="saving"
+          class="inline-flex items-center px-5 py-2.5 rounded-lg bg-blue-500 text-sm font-medium text-white shadow-sm hover:bg-blue-600 disabled:opacity-40 disabled:hover:bg-blue-500 transition-colors">
           {{ saving ? 'Saving...' : 'Save Settings' }}
         </button>
       </div>

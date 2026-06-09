@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Avatar</title>
+<style>
+  html, body, #root {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    overflow: hidden; background: transparent;
+  }
+  /* Drag handle — thin transparent bar at top */
+  #drag-bar {
+    position: fixed; top: 0; left: 0; right: 0; height: 28px;
+    z-index: 999; cursor: grab; background: transparent;
+  }
+  #drag-bar:active { cursor: grabbing; }
+  /* Right-click menu */
+  #ctx-menu {
+    position: fixed; z-index: 9999;
+    background: rgba(30,30,40,0.95); border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px; padding: 4px; min-width: 100px;
+    display: none; backdrop-filter: blur(12px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  }
+  #ctx-menu button {
+    display: block; width: 100%; padding: 6px 12px;
+    border: none; background: none; color: #e0e0e0;
+    font-size: 13px; text-align: left; cursor: pointer;
+    border-radius: 5px;
+  }
+  #ctx-menu button:hover { background: rgba(255,255,255,0.1); }
+  #ctx-menu button.danger { color: #ff6b6b; }
+  #ctx-menu button.danger:hover { background: rgba(255,80,80,0.2); }
+</style>
+<!-- Drag handle -->
+<div id="drag-bar"></div>
+<!-- Right-click menu -->
+<div id="ctx-menu">
+  <button onclick="closeWindow()">Close Window</button>
+</div>
+<script src="/live2d/live2dcubismcore.min.js"></script>
+<script>
+  // Stub Cubism2 globals that pixi-live2d-display references directly.
+  // These are normally defined by the proprietary live2d.min.js (Cubism 2 SDK).
+  // Since we use Cubism 4 Core (live2dcubismcore.min.js) + the Cubism 4 path
+  // in pixi-live2d-display, these stubs only need to exist — they don't need
+  // real implementations because the Cubism 4 code path never calls them.
+  function Stub() {}
+  Stub.prototype.updateParam = function(){};
+
+  var noop = function(){};
+  var stubCreate = function(){ return null; };
+
+  // Full PhysicsHair shim — pixi-live2d-display accesses PhysicsHair.Src.* constants
+  var PhysicsHairStub = { Src: { SRC_TO_X: 'x', SRC_TO_Y: 'y', SRC_TO_G_ANGLE: 'angle' } };
+
+  // Every Cubism 2 global that pixi-live2d-display references
+  window.Live2DMotion = Stub;
+  window.AMotion = Stub;
+  window.Live2DExpression = Stub;
+  window.MotionQueueManager = function(){ this.startMotion = noop; };
+  window.PhysicsHair = PhysicsHairStub;
+  window.L2DPhysicsHair = { create: stubCreate };
+
+  window.Live2D = {
+    getError: function(){ return ''; },
+    dispose: noop,
+    Live2DModelWebGL: Stub,
+    Live2DMotion: Stub,
+    MotionQueueManager: window.MotionQueueManager,
+    PhysicsHair: PhysicsHairStub,
+    AMotion: Stub,
+    Live2DExpression: Stub,
+  };
+</script>
+<script type="module" crossorigin src="/avatar-agent/assets/index-CeOofDrQ.js"></script>
+<link rel="stylesheet" crossorigin href="/avatar-agent/assets/index-x-ty9mcd.css">
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+// Override the model path before the bundle executes
+// The avatar-agent code path is `moc3Path: "/live2d/models/haru/haru.moc3"`
+// Use model3.json instead so pixi-live2d-display can load settings directly
+Object.defineProperty(window, '__HARU_MODEL', { value: '/live2d/models/haru/haru.model3.json', writable: true });
+</script>
+
+<script type="module">
+import { getCurrentWindow } from '/tauri-api/window.js';
+
+const win = getCurrentWindow();
+document.getElementById('drag-bar').addEventListener('mousedown', (e) => {
+  if (e.button === 0) win.startDragging();
+});
+document.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  const ctx = document.getElementById('ctx-menu');
+  ctx.style.left = Math.min(e.clientX, innerWidth - 110) + 'px';
+  ctx.style.top = Math.min(e.clientY, innerHeight - 50) + 'px';
+  ctx.style.display = 'block';
+});
+document.addEventListener('click', () => {
+  document.getElementById('ctx-menu').style.display = 'none';
+});
+window.closeWindow = async () => { await win.close(); };
+</script>
+</body>
+</html>

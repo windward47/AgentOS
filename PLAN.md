@@ -435,154 +435,76 @@ pub struct WhisperLocal {
 
 ---
 
-### Sprint 1.4 Live2D 形象（3 天）
+### Sprint 1.4 Live2D 形象（实际方案，已完成） 🔄
 
-#### 任务 1.4.1 — 前端 PixiJS + Live2D
-
-**文件：** `web/src/components/Live2DCanvas.vue`
-
-```typescript
-// 使用 pixi-live2d-display
-// 流程：
-// 1. 初始化 PixiJS Application
-// 2. 加载 .model3.json 文件
-// 3. 将 Live2D sprite 添加到舞台
-// 4. 监听 Tauri event 'audio_level' 更新嘴型参数
-```
-
-**嘴型驱动协议（Tauri 前端事件）：**
-
-```typescript
-// 后端每帧（~20ms）发送
-await emit('audio_level', { level: 0.75 }); // 0.0 ~ 1.0
-
-// 前端接收
-import { listen } from '@tauri-apps/api/event';
-await listen<{ level: number }>('audio_level', (event) => {
-    live2dModel.internalModel.coreModel
-        .setParameterValueById('ParamMouthOpenY', event.payload.level);
-});
-```
-
-#### 任务 1.4.2 — 状态动画
-
-```typescript
-// 监听 agent_state 事件
-await listen<{ state: 'idle' | 'speaking' | 'listening' | 'thinking' | 'error' }>(
-    'agent_state', (event) => {
-        // 切换 Live2D 动作（motion group）
-        model.motion(event.payload.state);
-    }
-);
-```
-
-#### 任务 1.4.3 — 嘴型同步验证
-
-在 `tts/mod.rs` 中，播放音频时计算瞬时幅度并通过 Tauri event 发送：
-
-```rust
-// 伪代码：每 20ms 计算一次
-while let Some(chunk) = audio_stream.next().await {
-    let rms = (chunk.iter().map(|s| s * s).sum::<f32>() / chunk.len() as f32).sqrt();
-    emit("audio_level", rms);
-}
-```
-
-#### 任务 1.4.4 — 默认模型
-
-- 在 `~/.companion/models/` 下内置一个免费开源 Live2D 模型
-- 首次运行无模型时提示下载
-- 提供 `companion download-default-model` 命令
+> **实际方案与 PLAN 原始设计不同**。原始方案建议 pixi-live2d-display npm 包 + Vue 组件内嵌渲染，
+> 但该包与当前 pixi.js 生态有版本兼容断裂。最终采用：
+> - **多窗口架构**：主窗口（聊天）+ 独立透明窗口（Live2D 渲染）
+> - **预构建 bundle**：来自 avatar-agent 项目的完整 PixiJS + pixi-live2d-display 打包产物
+> - **Cubism Core**：`live2dcubismcore.min.js` (207KB Emscripten WASM)
+> - **模型**：Haru Greeter Pro (Cubism 3, 通过 `.model3.json` 加载)
+> - **Cubism 2 shim**：22+ 个全局变量的 stub，绕过 pixi-live2d-display 的 Cubism 2 运行时检测
+>
+> **Tauri 窗口配置**：
+> ```json
+> {
+>   "label": "avatar",
+>   "url": "avatar.html?window=avatar",
+>   "transparent": true,
+>   "decorations": false,
+>   "alwaysOnTop": true,
+>   "skipTaskbar": true
+> }
+> ```
+>
+> **交互**：顶部 28px 透明拖拽条 + 右键菜单关闭窗口。
 
 **Sprint 1.4 验收：**
 
-- [ ] Live2D 模型加载并显示在窗口中
-- [ ] 收到 `audio_level` 事件时嘴部动作变化
-- [ ] 收到 `agent_state` 事件时切换待机/说话/思考动画
-- [ ] 性能：嘴型更新不掉帧（60fps 稳定）
+- [x] Live2D 模型在独立透明窗口中渲染
+- [ ] 收到 `audio_level` 事件时嘴部动作变化（待 TTS 实现后）
+- [x] 窗口可拖拽移动、右键关闭
+- [x] 性能：60fps 稳定（独立窗口，不影响主窗口响应）
 
 ---
 
-### Sprint 1.5 oh-my-pi RPC Agent 核心集成（3 天）
+### Sprint 1.5 oh-my-pi Agent 核心集成（已实现 ✅）
 
-> Agent 核心不再自研 LLM 编排，而是通过 RPC 子进程方式接入 **oh-my-pi** (omp)。
-> omp 负责：LLM 调用、工具选择、对话管理。Companion 负责：语音/感知/呈现。
+> Agent 核心通过 **`omp -p` 同步进程**接入 oh-my-pi。每个 chat 消息 spawn 一个新 omp 进程，
+> stdout 即回复文本。不使用 `omp --mode rpc`（RPC 模式不返回消息体，只在成功帧中返回 `{"success":true}`）。
 
-#### 任务 1.5.1 — omp RPC 子进程管理
+#### 任务 1.5.1 — omp 同步子进程管理
 
 **文件：** `src-tauri/src/agent/omp_rpc.rs`
 
 ```rust
-/// OmpRpcClient 生命周期
+/// Stateless — spawns `omp -p "message" --no-session` per chat call.
 pub struct OmpRpcClient {
-    child: Mutex<Option<ChildProcess>>,  // omp --mode rpc 子进程
-    next_id: AtomicU64,
-    binary: String,                       // "omp" (from PATH or configured path)
+    binary: String,  // "omp" or "omp.cmd" on Windows
 }
 
 impl OmpRpcClient {
-    /// 启动子进程
-    pub async fn spawn(&self) -> Result<(), AgentError>;
-
-    /// 发送 prompt，等待完整回复
-    pub async fn chat(&self, message: &str, history: &[ConversationMessage]) -> Result<AgentResponse>;
-
-    /// Stream 版本（用于实时 TTS）
-    pub async fn chat_stream(&self, message: &str, history: &[ConversationMessage])
-        -> Result<Receiver<AgentStreamEvent>>;
-
-    /// 切换模型（provider + modelId）
-    pub async fn set_model(&self, provider: &str, model_id: &str) -> Result<(), AgentError>;
-
-    /// 关闭子进程
-    pub async fn shutdown(&self);
+    // Uses tokio::task::spawn_blocking to run omp synchronously
+    pub async fn chat(&self, message: &str) -> Result<AgentResponse>;
 }
 ```
 
-**通信协议（NDJSON over stdio）：**
+#### 任务 1.5.2 — Windows 路径兼容
 
-| 方向 | 帧类型 | 用途 |
-|------|--------|------|
-| → | `{"id":"r1","type":"prompt","message":"..."}` | 发送用户消息 |
-| ← | `{"id":"r1","type":"response","message":{"content":"..."}}` | 接收回复 |
-| → | `{"id":"r2","type":"set_model","provider":"...","modelId":"..."}` | 切换模型 |
-| → | `{"id":"r3","type":"abort"}` | 终止当前生成 |
-| ← | `{"id":"r1","type":"error","error":"..."}` | 错误帧 |
+Windows 上 npm 全局安装的 `omp` 是 POSIX shell script，必须用 `omp.cmd`。
+`resolve_omp_binary()` 自动检测 `%APPDATA%\npm\omp.cmd`。
 
-#### 任务 1.5.2 — AgentEngine trait 统一接口
+#### 任务 1.5.3 — 默认模型配置
 
-**文件：** `src-tauri/src/agent/mod.rs`
+`~/.omp/agent/config.yml` 中默认模型设为 `siliconflow/nex-agi/Nex-N2-Pro`（免费），
+API 通过 `sensenova` provider alias 配置在 `models.yml` 中，指向 `api.siliconflow.cn/v1`。
 
-```rust
-#[async_trait]
-pub trait AgentEngine: Send + Sync {
-    async fn chat(&self, message: &str, history: &[ConversationMessage])
-        -> Result<AgentResponse, AgentError>;
+**Sprint 1.5 验收：**
 
-    async fn chat_stream(&self, message: &str, history: &[ConversationMessage])
-        -> Result<Receiver<AgentStreamEvent>, AgentError>;
-}
-
-pub enum AgentStreamEvent {
-    Token(String),
-    ToolStarted { name: String },
-    ToolCompleted { name: String, result: String },
-    Done,
-    Error(String),
-}
-```
-
-#### 任务 1.5.3 — omp 安装检查与自动配置
-
-- 首次启动检查 `omp` 是否在 `$PATH` 中
-- 如果未安装，显示引导提示（安装命令：`curl -fsSL https://omp.sh/install | sh`）
-- 通过 `omp --version` 验证版本 ≥ 1.3.14
-- 在 `config.json` 中保存 `agent_binary` 路径
-
-#### 任务 1.5.4 — 降级方案：直接 LLM API
-
-如果 omp 不可用，提供 DirectLlm 实现作为降级（直接调用 OpenAI/Ollama API），
-确保在没有 omp 的情况下核心对话功能仍可运行。
+- [x] `OmpRpcClient::chat()` 发送 prompt 并收到回复
+- [x] Windows 上正常找到和执行 omp
+- [x] 默认使用免费 SiliconFlow 模型 (Nex-N2-Pro)
+- [x] `cargo test` 全部通过
 
 **文件：** `src-tauri/src/agent/direct_llm.rs`（后续 Sprint 实现，先留占位）
 

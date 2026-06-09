@@ -27,7 +27,7 @@ Companion 是一个**解耦**的 Agent 生态系统：
 | 模式 | 技术栈 | 适用场景 |
 |------|--------|----------|
 | **纯语音** | Tauri + cpal + Whisper + TTS | 后台驻守、低功耗设备 |
-| **Live2D 桌面** | Tauri + PixiJS + pixi-live2d-display | 日常桌面交互 |
+| **Live2D 桌面** | Tauri 独立透明窗口 + PixiJS 7 + pixi-live2d-display + Cubism Core | 日常桌面交互，多窗口架构 |
 | **VR 3D** | Godot 4 + OpenXR + VRM | 沉浸式 VR 体验 |
 
 ## Agent 核心策略

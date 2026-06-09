@@ -85,7 +85,7 @@ impl McpTool for SandboxExecute {
             for risky in HIGH_RISK_PATHS {
                 if arg.contains(risky) {
                     return Err(McpError::PermissionDenied(
-                        format!("argument references high-risk path: {risky}").into()
+                        format!("argument references high-risk path: {risky}")
                     ));
                 }
             }

@@ -57,3 +57,11 @@ web/src/assets/
 
 # IDE config
 .cursor/
+
+# Test artifacts
+test-results/
+web/test-results/
+
+# Temp files
+tmp/
+nul

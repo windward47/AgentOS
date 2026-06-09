@@ -1,161 +1,175 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { listen } from '@tauri-apps/api/event'
-import { Application, Container, Graphics, Text, TextStyle } from 'pixi.js'
-import { Live2DModel } from 'pixi-live2d-display'
 
-const canvasRef = ref<HTMLDivElement>()
-const modelLoaded = ref(false)
-const modelError = ref('')
+const mouthOpen = ref(0)
 
-let app: Application | null = null
-let live2dModel: Live2DModel | null = null
-let unlistenAudio: (() => void) | null = null
-let unlistenState: (() => void) | null = null
+let unlisten: (() => void) | null = null
 
-// ---------------------------------------------------------------------------
-// Fallback avatar when no model is loaded
-// ---------------------------------------------------------------------------
-function drawFallbackAvatar(container: Container) {
-  const g = new Graphics()
-  // Circle head
-  g.beginFill(0x6b8ef0)
-  g.drawCircle(160, 100, 70)
-  g.endFill()
-
-  // Eyes
-  g.beginFill(0xffffff)
-  g.drawCircle(140, 85, 18)
-  g.drawCircle(180, 85, 18)
-  g.endFill()
-  g.beginFill(0x333333)
-  g.drawCircle(143, 85, 8)
-  g.drawCircle(183, 85, 8)
-  g.endFill()
-
-  // Mouth (simple arc)
-  g.lineStyle(3, 0x333333)
-  g.arc(160, 120, 20, 0.2, Math.PI - 0.2)
-
-  container.addChild(g)
-
-  const style = new TextStyle({ fill: '#666', fontSize: 14, fontFamily: 'sans-serif' })
-  const label = new Text('加载 Live2D 模型以显示互动形象', style)
-  label.anchor.set(0.5, 0)
-  label.x = 160
-  label.y = 200
-  container.addChild(label)
-}
-
-// ---------------------------------------------------------------------------
-// Model loading
-// ---------------------------------------------------------------------------
-async function loadModel(path: string) {
-  if (!app) return
-  try {
-    live2dModel = await Live2DModel.from(path)
-    live2dModel.anchor.set(0.5, 0.5)
-    live2dModel.position.set(app.screen.width / 2, app.screen.height / 2)
-    live2dModel.scale.set(0.3)
-    app.stage.addChild(live2dModel as any)
-    modelLoaded.value = true
-    modelError.value = ''
-  } catch (e: any) {
-    modelError.value = `模型加载失败: ${e?.message || e}`
-    drawFallbackAvatar(app.stage)
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Event listeners
-// ---------------------------------------------------------------------------
-async function setupListeners() {
-  // Audio level → mouth open
-  unlistenAudio = await listen<{ level: number }>('audio_level', (event) => {
-    if (live2dModel) {
-      (live2dModel.internalModel.coreModel as any).setParameterValueById(
-        'ParamMouthOpenY',
-        Math.min(event.payload.level * 1.5, 1.0),
-      )
-    }
-  })
-
-  // Agent state → animation
-  unlistenState = await listen<{ state: string }>('agent_state', (event) => {
-    const state = event.payload.state
-    if (live2dModel) {
-      try {
-        live2dModel.motion(state)
-      } catch {
-        // motion group not found, ignore
-      }
-    }
-  })
-}
-
-// ---------------------------------------------------------------------------
-// Lifecycle
-// ---------------------------------------------------------------------------
 onMounted(async () => {
-  if (!canvasRef.value) return
-
-  app = new Application({
-    width: 320,
-    height: 320,
-    backgroundColor: 0xf0f4ff,
-    antialias: true,
-    resolution: window.devicePixelRatio || 1,
-    autoDensity: true,
-  })
-
-  canvasRef.value.appendChild(app.view as HTMLCanvasElement)
-
-  // Try loading model from the default path
-  const modelPath = `${window.location.origin}/models/Hiyori/Hiyori.model3.json`
-  await loadModel(modelPath)
-
-  await setupListeners()
+  try {
+    unlisten = await listen<{ level: number }>('audio_level', e => {
+      mouthOpen.value = Math.min(e.payload.level * 2.5, 1)
+    })
+  } catch {}
 })
 
-onBeforeUnmount(() => {
-  unlistenAudio?.()
-  unlistenState?.()
-  live2dModel?.destroy()
-  app?.destroy(true)
-})
+onBeforeUnmount(() => unlisten?.())
 </script>
 
 <template>
-  <div
-    ref="canvasRef"
-    class="live2d-container relative flex items-center justify-center"
-    :class="{ 'min-h-[320px]': true }"
-  >
-    <!-- Loading indicator -->
-    <div
-      v-if="!modelLoaded && !modelError"
-      class="absolute inset-0 flex items-center justify-center text-gray-400 text-sm"
-    >
-      <div class="text-center">
-        <div class="animate-spin w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full mx-auto mb-2"></div>
-        <span>加载模型中...</span>
+  <div class="avatar">
+    <div class="body">
+      <!-- Hair -->
+      <div class="hair" />
+      <!-- Head -->
+      <div class="head">
+        <div class="eye left"><div class="pupil" /></div>
+        <div class="eye right"><div class="pupil" /></div>
+        <div class="nose" />
+        <div class="mouth" :style="{ transform: `scaleY(${0.3 + mouthOpen * 0.7})` }" />
+        <!-- Blush -->
+        <div class="blush left" />
+        <div class="blush right" />
+      </div>
+      <!-- Torso -->
+      <div class="torso">
+        <div class="collar" />
       </div>
     </div>
-
-    <!-- Error / fallback hint -->
-    <div
-      v-if="modelError"
-      class="absolute bottom-2 left-2 right-2 text-xs text-gray-400 text-center px-2"
-    >
-      {{ modelError }}
-    </div>
+    <div class="shadow" />
   </div>
 </template>
 
 <style scoped>
-.live2d-container {
-  canvas {
-    display: block;
-  }
+.avatar {
+  width: 100%; height: 100%; min-height: 300px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+  background: linear-gradient(180deg, #e8f0fe 0%, #f0f4ff 60%, #fff 100%);
+}
+.body {
+  position: relative;
+  animation: float 3s ease-in-out infinite;
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0) }
+  50% { transform: translateY(-6px) }
+}
+.shadow {
+  width: 80px; height: 10px;
+  background: rgba(0,0,0,.06);
+  border-radius: 50%;
+  margin-top: -4px;
+  animation: shadowPulse 3s ease-in-out infinite;
+}
+@keyframes shadowPulse {
+  0%, 100% { transform: scaleX(1); opacity: .6 }
+  50% { transform: scaleX(.85); opacity: .3 }
+}
+
+/* Hair */
+.hair {
+  width: 140px; height: 80px;
+  background: linear-gradient(180deg, #5b3a8c 0%, #7c5cbf 100%);
+  border-radius: 80px 80px 0 0;
+  position: absolute; top: -20px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+}
+.hair::before {
+  content: '';
+  position: absolute; bottom: -15px; left: -18px;
+  width: 40px; height: 35px;
+  background: #7c5cbf; border-radius: 50%;
+}
+.hair::after {
+  content: '';
+  position: absolute; bottom: -15px; right: -18px;
+  width: 40px; height: 35px;
+  background: #7c5cbf; border-radius: 50%;
+}
+
+/* Head */
+.head {
+  width: 120px; height: 130px;
+  background: linear-gradient(180deg, #ffead5 0%, #ffe0c0 100%);
+  border-radius: 60px 60px 50px 50px;
+  position: relative; z-index: 2;
+  box-shadow: inset 0 -8px 12px rgba(0,0,0,.04);
+}
+
+/* Eyes */
+.eye {
+  width: 18px; height: 22px;
+  background: white;
+  border-radius: 50%;
+  position: absolute; top: 42px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.08);
+}
+.eye.left { left: 24px }
+.eye.right { right: 24px }
+.pupil {
+  width: 9px; height: 10px;
+  background: #3a2060; border-radius: 50%;
+  position: absolute; top: 7px; left: 50%;
+  transform: translateX(-50%);
+}
+.pupil::after {
+  content: ''; position: absolute;
+  width: 3px; height: 3px;
+  background: white; border-radius: 50%;
+  top: 2px; left: 2px;
+}
+/* Blink animation */
+.eye { animation: blink 4s infinite; }
+@keyframes blink {
+  0%, 92%, 100% { transform: scaleY(1) }
+  94% { transform: scaleY(.05) }
+}
+
+/* Blush */
+.blush {
+  width: 18px; height: 10px;
+  background: rgba(255,150,150,.25);
+  border-radius: 50%;
+  position: absolute; top: 65px;
+}
+.blush.left { left: 16px }
+.blush.right { right: 16px }
+
+/* Nose */
+.nose {
+  width: 6px; height: 4px;
+  background: rgba(0,0,0,.1);
+  border-radius: 50%;
+  position: absolute; top: 70px; left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Mouth */
+.mouth {
+  width: 24px; height: 10px;
+  background: #e88888;
+  border-radius: 0 0 12px 12px;
+  position: absolute; top: 82px; left: 50%;
+  transform: translateX(-50%) scaleY(.3);
+  transition: transform .08s;
+}
+
+/* Torso */
+.torso {
+  width: 100px; height: 50px;
+  background: linear-gradient(180deg, #7c5cbf 0%, #5b3a8c 100%);
+  border-radius: 30px 30px 0 0;
+  margin: -8px auto 0;
+  position: relative; z-index: 1;
+}
+.collar {
+  width: 80px; height: 12px;
+  background: #fff;
+  border-radius: 6px;
+  margin: 2px auto 0;
+  opacity: .5;
 }
 </style>

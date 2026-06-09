@@ -58,7 +58,7 @@ fn default_sandbox_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("./.companion/sandbox"))
 }
 
-fn default_llm() -> String { "openai".into() }
+fn default_llm() -> String { "siliconflow".into() }
 fn default_asr() -> String { "local".into() }
 fn default_tts() -> String { "local".into() }
 fn default_vad_threshold() -> f32 { 0.3 }
@@ -159,7 +159,7 @@ mod tests {
         let config = CompanionConfig::default();
         assert!(!config.system_mode);
         assert_eq!(config.vad_threshold, 0.3);
-        assert_eq!(config.llm_provider, "openai");
+        assert_eq!(config.llm_provider, "siliconflow");
     }
 
     #[test]

@@ -1,14 +1,27 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-/** Global application state accessible from any Vue component. */
-export const useAppStore = defineStore('app', () => {
-  const isConnected = ref(false)
-  const agentState = ref<'idle' | 'thinking' | 'speaking' | 'listening'>('idle')
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
 
-  function setAgentState(state: typeof agentState.value) {
-    agentState.value = state
+export const useAppStore = defineStore('app', () => {
+  const messages = ref<ChatMessage[]>([])
+  const isConnected = ref(false)
+  const sending = ref(false)
+
+  function addMessage(msg: ChatMessage) {
+    messages.value.push(msg)
   }
 
-  return { isConnected, agentState, setAgentState }
+  function clearMessages() {
+    messages.value = []
+  }
+
+  function setSending(v: boolean) {
+    sending.value = v
+  }
+
+  return { messages, isConnected, sending, addMessage, clearMessages, setSending }
 })

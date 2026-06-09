@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Avatar Agent</title>
+    <style>
+      html, body, #root { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+    </style>
+    <script src="/live2d/live2dcubismcore.min.js"></script>
+    <script>
+      // pixi-live2d-display@0.5.0-beta's Cubism 2 code path
+      // references these globals directly. Provide no-op stubs.
+      (function() {
+        function Noop() {}
+        function StubMotion() { this.updateParam = Noop; }
+        StubMotion.prototype.updateParam = Noop;
+
+        // Globals that pixi-live2d-display accesses in top-level scope
+        window.Live2D = window.Live2D || {
+          getError: function() { return ""; },
+          dispose: Noop,
+          Live2DModelWebGL: Noop,
+          Live2DMotion: StubMotion,
+          MotionQueueManager: function() { this.startMotion = Noop; },
+          PhysicsHair: { create: function() { return null; }, updateParam: Noop },
+          Live2DExpression: StubMotion,
+          AMotion: StubMotion,
+        };
+        window.Live2DMotion = StubMotion;
+        window.L2DPhysicsHair = { create: function() { return null; } };
+      })();
+    </script>
+    <script type="module" crossorigin src="/avatar-agent/assets/index-CeOofDrQ.js"></script>
+    <link rel="stylesheet" crossorigin href="/avatar-agent/assets/index-x-ty9mcd.css">
+  </head>
+  <body><div id="root"></div></body>
+</html>

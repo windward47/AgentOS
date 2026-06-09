@@ -24,6 +24,7 @@ pub enum AsrError {
 pub mod mock;
 pub mod whisper_cloud;
 pub mod whisper_local;
+pub mod xiaomi_asr;
 
 use std::sync::Arc;
 use crate::audio::capture::AudioCapture;
@@ -34,6 +35,12 @@ pub struct VoiceInputService {
     capture: Option<AudioCapture>,
     vad: Vad,
     asr: Option<Arc<dyn AsrProvider + Send + Sync>>,
+}
+
+impl Default for VoiceInputService {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl VoiceInputService {

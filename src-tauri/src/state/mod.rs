@@ -1,6 +1,7 @@
 use crate::agent::{AgentEngine, ConversationMessage, MessageRole};
 use crate::agent::omp_rpc::OmpRpcClient;
 use crate::asr::AsrProvider;
+use crate::tts::TtsProvider;
 use crate::config::{CompanionConfig, ConfigManager};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -24,10 +25,61 @@ pub struct AppState {
     pub history: Arc<Mutex<Vec<ConversationMessage>>>,
 }
 
+fn resolve_omp_binary() -> String {
+    #[cfg(target_os = "windows")]
+    {
+        // On Windows, the npm global `omp` is a POSIX shell script (not executable).
+        // `omp.cmd` is the actual batch wrapper that Windows uses.
+        // `Command::new(\"omp\")` on Windows automatically tries .cmd/.exe/.bat,
+        // so the simplest fix is to leave it as bare `omp` without full path.
+        let candidates = [
+            // npm global: %APPDATA%/npm/omp.cmd (Windows batch wrapper)
+            {
+                let appdata = std::env::var("APPDATA").unwrap_or_default();
+                format!("{appdata}\\npm\\omp.cmd")
+            },
+        ];
+        for path in &candidates {
+            if std::path::Path::new(path).exists() {
+                log::info!("found omp at: {path}");
+                return path.clone();
+            }
+        }
+    }
+
+    // Non-Windows: the npm global omp script
+    let candidates = [
+        {
+            let home = dirs::home_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            format!("{home}/.local/bin/omp")
+        },
+        "/usr/local/bin/omp".to_string(),
+        "/opt/homebrew/bin/omp".to_string(),
+    ];
+    for path in &candidates {
+        if std::path::Path::new(path).exists() {
+            log::info!("found omp at: {path}");
+            return path.clone();
+        }
+    }
+
+    log::info!("omp not found at known paths; using bare 'omp' (PATH lookup)");
+    "omp".to_string()
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AppState {
     pub fn new() -> Self {
         let config_manager = ConfigManager::new().expect("failed to init config manager");
         let config = config_manager.load().expect("failed to load config");
+        let binary = resolve_omp_binary();
 
         Self {
             system_mode: AtomicBool::new(config.system_mode),
@@ -35,7 +87,7 @@ impl AppState {
             is_listening: AtomicBool::new(false),
             config: Arc::new(Mutex::new(config)),
             config_manager,
-            agent: Arc::new(OmpRpcClient::new("omp")),
+            agent: Arc::new(OmpRpcClient::new(&binary)),
             history: Arc::new(Mutex::new(Vec::new())),
         }
     }
@@ -102,19 +154,32 @@ pub async fn clear_history(
     Ok(())
 }
 
-/// Tauri command: transcribe raw PCM f32 mono audio to text.
-/// Audio should be 16kHz mono. Frontend handles microphone capture + VAD.
+/// Tauri command: transcribe raw PCM f32 mono audio to text using Xiaomi ASR.
+/// Audio should be 16kHz mono PCM f32 samples. Frontend handles microphone capture + VAD.
 #[tauri::command]
 pub async fn transcribe_audio(
     audio: Vec<f32>,
 ) -> Result<String, String> {
-    let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_default();
-    if api_key.is_empty() {
-        return Err("请设置 OPENAI_API_KEY 环境变量以启用语音识别功能".into());
-    }
-    let asr = crate::asr::whisper_cloud::WhisperCloud::new(&api_key, "whisper-1");
+    let asr = crate::asr::xiaomi_asr::XiaomiAsr::new(
+        "REDACTED_TOKEN_PLACEHOLDER",
+    );
     asr.transcribe(&audio).await
-        .map_err(|e| format!("ASR 错误: {e}"))
+        .map_err(|e| format!("ASR error: {e}"))
+}
+
+/// Tauri command: synthesize text to audio using Xiaomi TTS.
+/// Returns PCM f32 mono samples (16kHz).
+#[tauri::command]
+pub async fn synthesize_audio(
+    text: String,
+    voice: Option<String>,
+) -> Result<Vec<f32>, String> {
+    let tts = crate::tts::xiaomi_tts::XiaomiTts::new(
+        "REDACTED_TOKEN_PLACEHOLDER",
+        &voice.unwrap_or_else(|| "茉莉".into()),
+    );
+    tts.synthesize(&text).await
+        .map_err(|e| format!("TTS error: {e}"))
 }
 
 /// Tauri command: return the current configuration (for Settings UI).
