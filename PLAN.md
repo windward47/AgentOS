@@ -284,9 +284,9 @@ impl ToolRegistry {
 
 **Sprint 1.1 验收：**
 
-- [ ] 在聊天框输入文字，LLM 能回复
-- [ ] 可以在云端（OpenAI）和本地（Ollama）间切换
-- [ ] LLM 能看到已注册的工具列表
+- [x] 在聊天框输入文字，LLM 能回复
+- [~] 可以在云端和本地间切换 — Settings UI 有下拉框但未桥接到 omp 的 models.yml
+- [~] LLM 能看到已注册的工具列表 — ToolRegistry 存在但 omp -p 不支持工具注入
 
 ---
 
@@ -356,11 +356,11 @@ pub struct CommandTool {
 
 **Sprint 1.2 验收：**
 
-- [ ] 沙盒内文件读写正常
-- [ ] 路径逃逸被拒绝并返回错误信息
-- [ ] 命令执行返回 stdout/stderr
-- [ ] 含 `;` 或 `|` 的命令被拒绝
-- [ ] Agent 可以通过自然语言操作沙盒文件
+- [x] 沙盒内文件读写正常
+- [x] 路径逃逸被拒绝并返回错误信息
+- [x] 命令执行返回 stdout/stderr
+- [x] 含 `;` 或 `|` 的命令被拒绝
+- [~] Agent 可以通过自然语言操作沙盒文件 — 工具已实现但未接入 omp 对话（需 MCP/工具注入）
 
 ---
 
@@ -480,23 +480,12 @@ API 通过 `sensenova` provider alias 配置在 `models.yml` 中，指向 `api.s
 - [x] 默认使用免费 SiliconFlow 模型 (Nex-N2-Pro)
 - [x] `cargo test` 全部通过
 
-**文件：** `src-tauri/src/agent/direct_llm.rs`（后续 Sprint 实现，先留占位）
-
-**Sprint 1.5 验收：**
-
-- [ ] `OmpRpcClient::spawn()` 启动 omp 子进程成功
-- [ ] `chat()` 发送 prompt 并收到回复
-- [ ] 子进程退出后自动检测并报告错误
-- [ ] `set_model()` 成功切换模型
-- [ ] `shutdown()` 正确终止子进程
-- [ ] 缺少 omp 时降级提示清晰
-- [ ] `cargo test` 全部通过
 
 ---
 
 ### Sprint 1.6 设置面板 + 集成联调（2 天）
 
-#### 任务 1.5.1 — 设置面板 UI
+#### 任务 1.6.1 — 设置面板 UI
 
 **文件：** `web/src/views/SettingsView.vue`
 
@@ -512,7 +501,7 @@ API 通过 `sensenova` provider alias 配置在 `models.yml` 中，指向 `api.s
 | 对话风格 | 下拉框（预设列表）|
 | 自定义 System Prompt | 文本域编辑器 |
 
-#### 任务 1.5.2 — 状态栏
+#### 任务 1.6.2 — 状态栏
 
 ```vue
 <!-- App.vue 底部状态栏 -->
@@ -524,7 +513,7 @@ API 通过 `sensenova` provider alias 配置在 `models.yml` 中，指向 `api.s
 </div>
 ```
 
-#### 任务 1.5.3 — 全流程集成测试
+#### 任务 1.6.3 — 全流程集成测试
 
 **端到端场景（手动验证）：**
 
@@ -535,12 +524,14 @@ API 通过 `sensenova` provider alias 配置在 `models.yml` 中，指向 `api.s
 5. 在设置中切换 LLM/ASR/TTS 提供商 → 工具提示更新
 6. 检查 `~/.companion/logs/` 下生成了操作日志
 
-**Sprint 1.5 验收：**
+**Sprint 1.6 验收：**
 
-- [ ] 所有设置项读写正常，重启后保留
-- [ ] 提供商切换后对话正常进行
-- [ ] 沙盒路径修改后工具操作在新目录下执行
-- [ ] 日志文件记录每次工具调用
+- [x] Settings 页面可打开/关闭，UI 正常（9 项配置：LLM/ASR/TTS providers, sandbox, VAD, user, style, prompt, TTS-always-on）
+- [x] 状态栏显示 Sandbox/Unrestricted 模式（sidebar 底部，`get_config` 实时读取）
+- [x] 配置持久化到 `~/.companion/config.json`（ConfigManager.save/load），重启保留
+- [~] LLM 提供商切换立即生效 — Settings 改的是 CompanionConfig，omp 读独立的 `~/.omp/agent/config.yml`，需要阶段二桥接
+- [~] Agent 通过自然语言操作沙盒 — 工具已实现但 `omp -p` stateless 不支持工具注入，需阶段二 MCP/会话模式
+- [ ] 操作日志 — 未实现，阶段二 SYSLOG 子任务
 
 ---
 

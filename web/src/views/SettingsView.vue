@@ -107,6 +107,33 @@ async function save() {
         </div>
       </section>
 
+      <!-- Voice & Speech -->
+      <section class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+          <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Voice & Speech</h2>
+        </div>
+        <div class="p-5 space-y-4">
+          <div class="flex items-center justify-between py-1">
+            <div>
+              <div class="text-sm font-medium text-gray-900">TTS Always-On</div>
+              <div class="text-xs text-gray-500 mt-0.5">Auto-play voice for every AI reply</div>
+            </div>
+            <button type="button" @click="config.enable_accessibility = !config.enable_accessibility"
+              :class="['relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none',
+                       config.enable_accessibility ? 'bg-emerald-500' : 'bg-gray-200']">
+              <span :class="['pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200',
+                            config.enable_accessibility ? 'translate-x-5' : 'translate-x-0']" />
+            </button>
+          </div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">
+            VAD Threshold — <span class="text-gray-500 font-normal">{{ config.vad_threshold.toFixed(2) }}</span>
+          </label>
+          <input v-model.number="config.vad_threshold" type="range" min="0" max="1" step="0.05"
+            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500" />
+          <div class="flex justify-between text-[11px] text-gray-400 mt-1"><span>Sensitive</span><span>Strict</span></div>
+        </div>
+      </section>
+
       <!-- Sandbox -->
       <section class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div class="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
@@ -132,22 +159,8 @@ async function save() {
         </div>
       </section>
 
-      <!-- VAD -->
-      <section class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div class="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
-          <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Voice Detection</h2>
-        </div>
-        <div class="p-5">
-          <label class="block text-sm font-medium text-gray-700 mb-2">
-            VAD Threshold — <span class="text-gray-500 font-normal">{{ config.vad_threshold.toFixed(2) }}</span>
-          </label>
-          <input v-model.number="config.vad_threshold" type="range" min="0" max="1" step="0.05"
-            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500" />
-          <div class="flex justify-between text-[11px] text-gray-400 mt-1"><span>Sensitive</span><span>Strict</span></div>
-        </div>
-      </section>
 
-      <!-- Custom Prompt -->
+      <!-- Custom System Prompt -->
       <section class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div class="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
           <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Custom System Prompt</h2>

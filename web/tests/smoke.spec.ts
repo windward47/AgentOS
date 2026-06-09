@@ -98,12 +98,15 @@ test.describe('Companion UI smoke tests', () => {
     const micBtn = page.locator('button[title*="recording"]')
     await expect(micBtn).toBeVisible()
 
-    // Voice mode toggle
-    const dictationBtn = page.getByText('Dictation')
-    const chatBtn = page.getByText('Real-time chat')
-    await expect(dictationBtn.or(chatBtn)).toBeVisible()
+    // Voice mode toggle — Chat button contains "Chat"
+    const chatToggle = page.getByText('💬 Chat')
+    await expect(chatToggle).toBeVisible()
 
-    await page.screenshot({ path: 'tests/screenshots/05-voice-ui.png', fullPage: true })
+    // TTS auto toggle
+    const ttsAuto = page.getByText('Auto')
+    await expect(ttsAuto).toBeVisible()
+
+    await page.screenshot({ path: 'web/tests/screenshots/05-voice-ui.png', fullPage: true })
   })
 
 })
