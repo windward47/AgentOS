@@ -81,6 +81,8 @@ Local and cloud implementations live in sibling files. Runtime switching via con
 | `synthesize_audio` | `text: string, voice?: string` | `Vec<f32>` (PCM f32 mono) |
 | `get_config` | — | `CompanionConfig` |
 | `update_config` | `config: CompanionConfig` | `()` |
+| `set_lip_level` | `level: f32` (0-1) | `()` |
+| `get_lip_level` | — | `f32` |
 
 ## Conventions
 

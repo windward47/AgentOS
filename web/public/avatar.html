@@ -32,7 +32,7 @@
 <div id="root"></div>
 
 <script type="module">
-// Tauri window controls (dynamic import — won't crash in browser)
+// Tauri window controls
 import('/tauri-api/window.js').then(function(m) {
   var win = m.getCurrentWindow();
   document.getElementById('drag-bar').addEventListener('mousedown', function(e) { if(e.button===0) win.startDragging(); });
@@ -51,30 +51,30 @@ document.addEventListener('click', function() {
   if (c) c.style.display = 'none';
 });
 
-// ── Lip sync via window.__live2d.setParam ──
-// The avatar-agent bundle exposes window.__live2d (from AvatarRenderer.tsx).
-// We listen for audio_level events and drive the mouth parameter.
-var lipLevel = 0;
-var lipSmooth = 0;
-var lipTimer = 0;
+// ── Lip sync: poll get_lip_level via Rust IPC ──
+var lipSmooth = 0, lipTimer = 0;
+var invokeFn = null;
+
+// Get invoke from Tauri API
+import('/tauri-api/core.js').then(function(m) {
+  invokeFn = m.invoke;
+}).catch(function() {});
 
 function lipTick() {
-  var target = lipLevel * 1.8;
-  var speed = target > lipSmooth ? 0.3 : 0.12;
-  lipSmooth += (target - lipSmooth) * speed;
-  if (window.__live2d && window.__live2d.setParam) {
-    window.__live2d.setParam('mouthOpen', lipSmooth);
+  // Poll Rust state every 50ms
+  if (invokeFn) {
+    invokeFn('get_lip_level').then(function(level) {
+      var target = level * 1.8;
+      var speed = target > lipSmooth ? 0.3 : 0.12;
+      lipSmooth += (target - lipSmooth) * speed;
+      if (window.__live2d && window.__live2d.setParam) {
+        window.__live2d.setParam('mouthOpen', lipSmooth);
+      }
+    }).catch(function() {});
   }
   lipTimer = requestAnimationFrame(lipTick);
 }
 lipTick();
-
-// Listen for audio_level events from main window
-import('/tauri-api/event.js').then(function(m) {
-  m.listen('audio_level', function(event) {
-    lipLevel = (event.payload && event.payload.level) || 0;
-  }).catch(function() {});
-}).catch(function() {});
 </script>
 </body>
 </html>

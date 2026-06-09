@@ -15,6 +15,8 @@ pub struct AppState {
     pub is_speaking: AtomicBool,
     /// Whether the agent is currently listening (for VAD/ASR gate)
     pub is_listening: AtomicBool,
+    /// Lip-sync level shared between main window and avatar window
+    pub lip_level: std::sync::Mutex<f32>,
     /// Application configuration (loaded at startup, mutable at runtime)
     pub config: Arc<Mutex<CompanionConfig>>,
     /// Configuration persistence manager
@@ -85,6 +87,7 @@ impl AppState {
             system_mode: AtomicBool::new(config.system_mode),
             is_speaking: AtomicBool::new(false),
             is_listening: AtomicBool::new(false),
+            lip_level: std::sync::Mutex::new(0.0),
             config: Arc::new(Mutex::new(config)),
             config_manager,
             agent: Arc::new(OmpRpcClient::new(&binary)),
@@ -204,4 +207,22 @@ pub async fn update_config(
     state.save_config().await;
     state.system_mode.store(config.system_mode, Ordering::SeqCst);
     Ok(())
+}
+
+/// Tauri command: set the lip-sync level (0.0–1.0). Main window calls this during TTS playback.
+#[tauri::command]
+pub async fn set_lip_level(
+    state: tauri::State<'_, AppState>,
+    level: f32,
+) -> Result<(), String> {
+    *state.lip_level.lock().unwrap() = level.clamp(0.0, 1.0);
+    Ok(())
+}
+
+/// Tauri command: get the current lip-sync level. Avatar window polls this at ~30fps.
+#[tauri::command]
+pub async fn get_lip_level(
+    state: tauri::State<'_, AppState>,
+) -> Result<f32, String> {
+    Ok(*state.lip_level.lock().unwrap())
 }

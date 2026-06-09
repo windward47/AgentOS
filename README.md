@@ -118,6 +118,8 @@ AgentOS/
 | `synthesize_audio` | `text: string, voice?: string` | `number[]` (PCM) | 文字转语音 (Xiaomi TTS) |
 | `get_config` | 无 | `CompanionConfig` | 获取当前配置 |
 | `update_config` | `config: CompanionConfig` | `()` | 更新配置 |
+| `set_lip_level` | `level: number` (0-1) | `()` | TTS 嘴型同步 |
+| `get_lip_level` | 无 | `number` | 读取嘴型值 |
 
 ## 技术栈
 

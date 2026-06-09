@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import { emit } from '@tauri-apps/api/event'
 import { useAppStore } from '../stores/app'
 
 const store = useAppStore()
@@ -156,12 +155,12 @@ async function playTTS(text: string, msgIdx: number) {
     const pcm = await invoke<number[]>('synthesize_audio', { text: text.slice(0, 300), voice: ttsVoice.value })
     if (!pcm || pcm.length === 0) { playingId.value = null; return }
     if (!audioCtx) audioCtx = new AudioContext()
-    const tgtRate = ttsSpeed.value
-    const buf = audioCtx.createBuffer(1, pcm.length, Math.round(16000 / tgtRate))
+    const buf = audioCtx.createBuffer(1, pcm.length, 16000)
     const ch = buf.getChannelData(0)
     for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i]
     const src = audioCtx.createBufferSource()
-    src.buffer = buf; src.playbackRate.value = tgtRate
+    src.buffer = buf
+    src.playbackRate.value = ttsSpeed.value
     src.connect(audioCtx.destination)
     src.onended = () => { playingId.value = null; if (lipTimer) clearInterval(lipTimer) }
     src.start()
@@ -174,7 +173,7 @@ async function playTTS(text: string, msgIdx: number) {
       const start = Math.max(0, idx - 480), end = Math.min(pcm.length, idx + 480)
       let sum = 0; for (let i = start; i < end; i++) sum += pcm[i] * pcm[i]
       const rms = Math.sqrt(sum / (end - start))
-      emit('audio_level', { level: Math.min(rms * 3, 1.0) }).catch(() => {})
+      invoke('set_lip_level', { level: Math.min(rms * 3, 1.0) }).catch(() => {})
     }, 60)
   } catch (err: any) { console.error('TTS error:', err); playingId.value = null }
 }
@@ -224,6 +223,17 @@ async function blobToPCM(blob: Blob): Promise<Float32Array> {
       <div class="flex items-center gap-2">
         <div class="w-2 h-2 rounded-full bg-emerald-400" />
         <span class="text-sm font-medium text-gray-700">Companion</span>
+        <!-- VAD level bar -->
+        <div v-if="recording || vadLevel > 0.05" class="flex items-center gap-1 ml-2">
+          <div class="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div class="h-full rounded-full transition-all duration-100"
+              :class="vadLevel > 0.4 ? 'bg-red-400' : vadLevel > 0.2 ? 'bg-amber-400' : 'bg-emerald-400'"
+              :style="{ width: (vadLevel * 100) + '%' }" />
+          </div>
+          <span class="text-[10px] text-gray-400 font-mono w-8">
+            {{ (vadLevel * 100).toFixed(0) }}%
+          </span>
+        </div>
       </div>
       <div class="flex items-center gap-3">
         <!-- Hotkey display -->

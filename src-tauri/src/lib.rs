@@ -41,7 +41,9 @@ pub fn run() {
             state::transcribe_audio,
             state::synthesize_audio,
             state::get_config,
-            state::update_config
+            state::update_config,
+            state::set_lip_level,
+            state::get_lip_level,
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
