@@ -6,6 +6,33 @@
 <title>Haru</title>
 <!-- Cubism 5 Core (WASM) — sync load before any module -->
 <script src="/live2d/live2dcubismcore.min.js"></script>
+<script>
+  // Cubism 2 runtime stubs — pixi-live2d-display checks for these globals
+  // even when using Cubism 4 models. No-op stubs prevent ReferenceError.
+  (function() {
+    function Stub() {}
+    function StubMotion() { this.updateParam = Stub; }
+    StubMotion.prototype.updateParam = Stub;
+    var stubProto = { updateParam: Stub };
+    var noop = function() {}, stubNull = function() { return null; };
+    window.Live2D = {
+      getError: function() { return ''; },
+      dispose: noop,
+      Live2DModelWebGL: Stub,
+      Live2DMotion: StubMotion,
+      MotionQueueManager: function() { this.startMotion = noop; },
+      PhysicsHair: { create: stubNull, updateParam: noop, Src: { SRC_TO_X: 'x', SRC_TO_Y: 'y', SRC_TO_G_ANGLE: 'angle' } },
+      Live2DExpression: StubMotion,
+      AMotion: StubMotion,
+    };
+    window.Live2DMotion = StubMotion;
+    window.Live2DExpression = StubMotion;
+    window.L2DPhysicsHair = { create: stubNull };
+    window.PhysicsHair = { Src: { SRC_TO_X: 'x', SRC_TO_Y: 'y', SRC_TO_G_ANGLE: 'angle' }, Target: { TARGET_FROM_ANGLE: 'angle', TARGET_FROM_ANGLE_V: 'angle_v' } };
+    window.MotionQueueManager = function() { this.startMotion = noop; };
+    window.AMotion = StubMotion;
+  })();
+</script>
 <style>
   html, body, #root { margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:linear-gradient(180deg,#1a1a2e 0%,#16213e 60%,#0f3460 100%);user-select:none; }
   #drag-bar { position:fixed;top:0;left:0;right:0;height:28px;z-index:999;cursor:grab; }
