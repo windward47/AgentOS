@@ -28,6 +28,7 @@
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/cli": "^2.11.2",
     "pinia": "^2.3.1",
+    "pixi-live2d-display": "^0.5.0-beta",
     "tailwindcss": "^4.3.0",
     "vue": "^3.5.34",
     "vue-router": "^4.6.4"
