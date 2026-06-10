@@ -11,5 +11,6 @@
     "verbatimModuleSyntax": false,
     "useDefineForClassFields": false
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"],
+  "exclude": ["src/live2d"]
 }
