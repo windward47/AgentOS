@@ -62,6 +62,28 @@ pub struct CompanionConfig {
     /// API token for Xiaomi/cloud services (env COMPANION_API_TOKEN overrides)
     #[serde(default)]
     pub api_token: Option<String>,
+
+    // ── Custom provider overrides ──
+    #[serde(default)]
+    pub llm_custom_url: Option<String>,
+    #[serde(default)]
+    pub llm_custom_key: Option<String>,
+    #[serde(default)]
+    pub llm_custom_model: Option<String>,
+
+    #[serde(default)]
+    pub asr_custom_url: Option<String>,
+    #[serde(default)]
+    pub asr_custom_key: Option<String>,
+    #[serde(default)]
+    pub asr_custom_model: Option<String>,
+
+    #[serde(default)]
+    pub tts_custom_url: Option<String>,
+    #[serde(default)]
+    pub tts_custom_key: Option<String>,
+    #[serde(default)]
+    pub tts_custom_model: Option<String>,
 }
 
 fn default_sandbox_path() -> PathBuf {
@@ -96,6 +118,9 @@ impl Default for CompanionConfig {
             custom_system_prompt: None,
             emotion_mapping: HashMap::new(),
             api_token: None,
+            llm_custom_url: None, llm_custom_key: None, llm_custom_model: None,
+            asr_custom_url: None, asr_custom_key: None, asr_custom_model: None,
+            tts_custom_url: None, tts_custom_key: None, tts_custom_model: None,
         }
     }
 }

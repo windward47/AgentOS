@@ -14,9 +14,13 @@ pub struct XiaomiAsr {
 
 impl XiaomiAsr {
     pub fn new(api_key: &str) -> Self {
+        Self::with_url(api_key, "https://token-plan-cn.xiaomimimo.com/v1/chat/completions")
+    }
+
+    pub fn with_url(api_key: &str, base_url: &str) -> Self {
         Self {
             api_key: api_key.to_string(),
-            base_url: "https://token-plan-cn.xiaomimimo.com/v1/chat/completions".into(),
+            base_url: base_url.to_string(),
             client: reqwest::Client::new(),
         }
     }

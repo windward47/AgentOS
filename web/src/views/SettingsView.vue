@@ -9,6 +9,9 @@ interface Config {
   user_name: string; style_template: string; custom_system_prompt: string | null
   emotion_mapping: Record<string, string>; api_token: string | null
   voice_mode: string; tts_voice: string
+  llm_custom_url: string | null; llm_custom_key: string | null; llm_custom_model: string | null
+  asr_custom_url: string | null; asr_custom_key: string | null; asr_custom_model: string | null
+  tts_custom_url: string | null; tts_custom_key: string | null; tts_custom_model: string | null
 }
 
 const router = useRouter()
@@ -25,6 +28,9 @@ onMounted(async () => {
       user_name: 'User', style_template: 'professional', custom_system_prompt: null,
       emotion_mapping: {}, api_token: null,
       voice_mode: 'ptt', tts_voice: '茉莉',
+      llm_custom_url: null, llm_custom_key: null, llm_custom_model: null,
+      asr_custom_url: null, asr_custom_key: null, asr_custom_model: null,
+      tts_custom_url: null, tts_custom_key: null, tts_custom_model: null,
     }
   }
 })
@@ -34,6 +40,34 @@ async function save() {
   saving.value = true; saved.value = false
   try { await invoke('update_config', { config: config.value }); saved.value = true; setTimeout(() => saved.value = false, 2000) }
   catch {} finally { saving.value = false }
+}
+
+// ── Custom provider model detection ──
+const detectingLlm = ref(false); const detectingAsr = ref(false); const detectingTts = ref(false)
+const llmModels = ref<string[]>([]); const asrModels = ref<string[]>([]); const ttsModels = ref<string[]>([])
+
+async function detectModels(kind: 'llm' | 'asr' | 'tts') {
+  if (!config.value) return
+  const url = config.value[kind + '_custom_url' as keyof Config] as string | null
+  const key = config.value[kind + '_custom_key' as keyof Config] as string | null
+  if (!url) return
+
+  const setDetecting = kind === 'llm' ? (v: boolean) => detectingLlm.value = v
+    : kind === 'asr' ? (v: boolean) => detectingAsr.value = v
+    : (v: boolean) => detectingTts.value = v
+  const setModels = kind === 'llm' ? llmModels : kind === 'asr' ? asrModels : ttsModels
+
+  setDetecting(true); setModels.value = []
+  try {
+    const models = await invoke<string[]>('list_models', { baseUrl: url, apiKey: key || '' })
+    setModels.value = models
+    // Auto-select first if none selected
+    if (models.length > 0 && !config.value[kind + '_custom_model' as keyof Config]) {
+      ;(config.value as any)[kind + '_custom_model'] = models[0]
+    }
+  } catch (err: any) {
+    setModels.value = [String(err)]
+  } finally { setDetecting(false) }
 }
 </script>
 
@@ -83,27 +117,109 @@ async function save() {
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1.5">LLM Model</label>
             <select v-model="config.llm_provider" class="block w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors">
-              <option value="siliconflow">Nex-N2-Pro 🆓</option>
+              <option value="siliconflow">MiMo V2.5</option>
               <option value="xiaomi">MiMo V2.5 Pro</option>
-              <option value="openai">OpenAI</option>
-              <option value="ollama">Ollama (Local)</option>
-              <option value="claude">Claude</option>
+              <option value="custom">Custom API</option>
             </select>
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1.5">ASR (Speech)</label>
             <select v-model="config.asr_provider" class="block w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors">
               <option value="xiaomi">Xiaomi (MiMo)</option>
-              <option value="local">Whisper (Local)</option>
-              <option value="cloud">Whisper (Cloud)</option>
+              <option value="custom">Custom API</option>
             </select>
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1.5">TTS (Voice)</label>
             <select v-model="config.tts_provider" class="block w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors">
               <option value="xiaomi">Xiaomi (MiMo)</option>
-              <option value="local">ChatTTS (Local)</option>
-              <option value="cloud">Azure TTS</option>
+              <option value="custom">Custom API</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Custom provider fields — shown when ANY provider is "custom" -->
+        <div v-if="config.llm_provider === 'custom' || config.asr_provider === 'custom' || config.tts_provider === 'custom'" class="px-5 pb-5 border-t border-gray-100 space-y-5 pt-4">
+
+          <!-- LLM custom -->
+          <div v-if="config.llm_provider === 'custom'" class="bg-gray-50 rounded-lg p-4 space-y-3">
+            <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Custom LLM</h3>
+            <p class="text-[11px] text-amber-600">LLM is routed through omp. Set URL/Key here for reference, then configure omp separately.</p>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-medium text-gray-600 mb-1">API URL</label>
+                <input v-model="config.llm_custom_url" placeholder="https://api.openai.com/v1" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono placeholder:text-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" />
+              </div>
+              <div>
+                <label class="block text-[11px] font-medium text-gray-600 mb-1">API Key</label>
+                <input v-model="config.llm_custom_key" type="password" placeholder="sk-..." class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono placeholder:text-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" />
+              </div>
+            </div>
+            <div class="flex items-end gap-2">
+              <div class="flex-1">
+                <label class="block text-[11px] font-medium text-gray-600 mb-1">Model</label>
+                <div class="flex gap-2">
+                  <input v-model="config.llm_custom_model" placeholder="gpt-4" class="block flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono placeholder:text-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" />
+                  <button @click="detectModels('llm')" :disabled="detectingLlm" class="shrink-0 text-xs px-3 py-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-40 transition-colors">{{ detectingLlm ? '...' : 'Detect' }}</button>
+                </div>
+              </div>
+            </div>
+            <select v-if="llmModels.length" v-model="config.llm_custom_model" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none">
+              <option v-for="m in llmModels" :key="m" :value="m">{{ m }}</option>
+            </select>
+          </div>
+
+          <!-- ASR custom -->
+          <div v-if="config.asr_provider === 'custom'" class="bg-gray-50 rounded-lg p-4 space-y-3">
+            <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Custom ASR</h3>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-medium text-gray-600 mb-1">API URL</label>
+                <input v-model="config.asr_custom_url" placeholder="https://api.example.com/v1/chat/completions" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono placeholder:text-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" />
+              </div>
+              <div>
+                <label class="block text-[11px] font-medium text-gray-600 mb-1">API Key</label>
+                <input v-model="config.asr_custom_key" type="password" placeholder="sk-..." class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono placeholder:text-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" />
+              </div>
+            </div>
+            <div class="flex items-end gap-2">
+              <div class="flex-1">
+                <label class="block text-[11px] font-medium text-gray-600 mb-1">Model</label>
+                <div class="flex gap-2">
+                  <input v-model="config.asr_custom_model" placeholder="mimo-v2.5-asr" class="block flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono placeholder:text-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" />
+                  <button @click="detectModels('asr')" :disabled="detectingAsr" class="shrink-0 text-xs px-3 py-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-40 transition-colors">{{ detectingAsr ? '...' : 'Detect' }}</button>
+                </div>
+              </div>
+            </div>
+            <select v-if="asrModels.length" v-model="config.asr_custom_model" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none">
+              <option v-for="m in asrModels" :key="m" :value="m">{{ m }}</option>
+            </select>
+          </div>
+
+          <!-- TTS custom -->
+          <div v-if="config.tts_provider === 'custom'" class="bg-gray-50 rounded-lg p-4 space-y-3">
+            <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Custom TTS</h3>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-medium text-gray-600 mb-1">API URL</label>
+                <input v-model="config.tts_custom_url" placeholder="https://api.example.com/v1/chat/completions" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono placeholder:text-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" />
+              </div>
+              <div>
+                <label class="block text-[11px] font-medium text-gray-600 mb-1">API Key</label>
+                <input v-model="config.tts_custom_key" type="password" placeholder="sk-..." class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono placeholder:text-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" />
+              </div>
+            </div>
+            <div class="flex items-end gap-2">
+              <div class="flex-1">
+                <label class="block text-[11px] font-medium text-gray-600 mb-1">Model</label>
+                <div class="flex gap-2">
+                  <input v-model="config.tts_custom_model" placeholder="mimo-v2.5-tts" class="block flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono placeholder:text-gray-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" />
+                  <button @click="detectModels('tts')" :disabled="detectingTts" class="shrink-0 text-xs px-3 py-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-40 transition-colors">{{ detectingTts ? '...' : 'Detect' }}</button>
+                </div>
+              </div>
+            </div>
+            <select v-if="ttsModels.length" v-model="config.tts_custom_model" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none">
+              <option v-for="m in ttsModels" :key="m" :value="m">{{ m }}</option>
             </select>
           </div>
         </div>

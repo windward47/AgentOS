@@ -11,39 +11,24 @@ use tokio::sync::Mutex;
 
 /// Global application state shared across Tauri commands and modules.
 pub struct AppState {
-    /// System mode toggle (false = sandbox mode, true = system mode)
     pub system_mode: AtomicBool,
-    /// Whether the agent is currently speaking (for TTS interrupt logic)
     pub is_speaking: AtomicBool,
-    /// Whether the agent is currently listening (for VAD/ASR gate)
     pub is_listening: AtomicBool,
-    /// Lip-sync level shared between main window and avatar window
     pub lip_level: std::sync::Mutex<f32>,
-    /// Application configuration (loaded at startup, mutable at runtime)
     pub config: Arc<Mutex<CompanionConfig>>,
-    /// Configuration persistence manager
     pub config_manager: ConfigManager,
-    /// The Agent engine — OMP subprocess client with tool-calling loop
     pub agent: Arc<OmpRpcClient>,
-    /// Tool registry for sandbox file + command tools
     pub tools: Arc<ToolRegistry>,
-    /// Conversation history (shared across commands)
     pub history: Arc<Mutex<Vec<ConversationMessage>>>,
-    /// Audit logger for security-sensitive operations
     pub audit: AuditLogger,
 }
 
-/// Resolve the API token with priority: env var > config file > empty.
 fn resolve_api_token(config: &CompanionConfig) -> String {
     if let Ok(tok) = std::env::var("COMPANION_API_TOKEN") {
-        if !tok.is_empty() {
-            return tok;
-        }
+        if !tok.is_empty() { return tok; }
     }
     if let Some(ref tok) = config.api_token {
-        if !tok.is_empty() {
-            return tok.clone();
-        }
+        if !tok.is_empty() { return tok.clone(); }
     }
     String::new()
 }
@@ -51,12 +36,10 @@ fn resolve_api_token(config: &CompanionConfig) -> String {
 fn resolve_omp_binary() -> String {
     #[cfg(target_os = "windows")]
     {
-        let candidates = [
-            {
-                let appdata = std::env::var("APPDATA").unwrap_or_default();
-                format!("{appdata}\\npm\\omp.cmd")
-            },
-        ];
+        let candidates = [{
+            let appdata = std::env::var("APPDATA").unwrap_or_default();
+            format!("{appdata}\\npm\\omp.cmd")
+        }];
         for path in &candidates {
             if std::path::Path::new(path).exists() {
                 log::info!("found omp at: {path}");
@@ -64,15 +47,9 @@ fn resolve_omp_binary() -> String {
             }
         }
     }
-
-    // Non-Windows: the npm global omp script
     let candidates = [
-        {
-            let home = dirs::home_dir()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_default();
-            format!("{home}/.local/bin/omp")
-        },
+        { let home = dirs::home_dir().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+          format!("{home}/.local/bin/omp") },
         "/usr/local/bin/omp".to_string(),
         "/opt/homebrew/bin/omp".to_string(),
     ];
@@ -82,45 +59,34 @@ fn resolve_omp_binary() -> String {
             return path.clone();
         }
     }
-
     log::info!("omp not found at known paths; using bare 'omp' (PATH lookup)");
     "omp".to_string()
 }
 
-impl Default for AppState {
-    fn default() -> Self { Self::new() }
-}
+impl Default for AppState { fn default() -> Self { Self::new() } }
 
 impl AppState {
     pub fn new() -> Self {
         let config_manager = ConfigManager::new().expect("failed to init config manager");
         let config = config_manager.load().expect("failed to load config");
-        let audit = AuditLogger::new(&config_manager.root_dir())
-            .expect("failed to init audit logger");
+        let audit = AuditLogger::new(&config_manager.root_dir()).expect("failed to init audit logger");
         let binary = resolve_omp_binary();
-
         let sandbox_root = config_manager.root_dir().join("sandbox");
         let tools = Arc::new(ToolRegistry::with_builtins(sandbox_root));
-
         let model = provider_to_model(&config.llm_provider).to_string();
         let agent = Arc::new(OmpRpcClient::with_tools(&binary, tools.clone()));
         agent.set_model(model);
-
         Self {
             system_mode: AtomicBool::new(config.system_mode),
             is_speaking: AtomicBool::new(false),
             is_listening: AtomicBool::new(false),
             lip_level: std::sync::Mutex::new(0.0),
             config: Arc::new(Mutex::new(config)),
-            config_manager,
-            agent,
-            tools,
+            config_manager, agent, tools,
             history: Arc::new(Mutex::new(Vec::new())),
             audit,
         }
     }
-
-    /// Persist the current config to disk.
     pub async fn save_config(&self) {
         let config = self.config.lock().await;
         self.config_manager.save(&config).ok();
@@ -129,108 +95,68 @@ impl AppState {
 
 /// Tauri command: send a chat message to the agent and get a reply.
 #[tauri::command]
-pub async fn chat(
-    state: tauri::State<'_, AppState>,
-    message: String,
-) -> Result<String, String> {
-    let history_snapshot = {
-        let hist = state.history.lock().await;
-        hist.clone()
-    };
-
+pub async fn chat(state: tauri::State<'_, AppState>, message: String) -> Result<String, String> {
+    let history_snapshot = { let hist = state.history.lock().await; hist.clone() };
     let response = state.agent.chat(&message, &history_snapshot).await
         .map_err(|e| format!("Agent error: {e}"))?;
-
-    // Append user message + assistant reply to history
     {
         let mut hist = state.history.lock().await;
-        hist.push(ConversationMessage {
-            role: MessageRole::User,
-            content: message,
-        });
-        hist.push(ConversationMessage {
-            role: MessageRole::Assistant,
-            content: response.text.clone(),
-        });
-        // Keep at most last 50 messages by trimming from the front
-        if hist.len() > 50 {
-            let keep = hist.len() - 50;
-            hist.rotate_left(keep);
-            hist.truncate(50);
-        }
+        hist.push(ConversationMessage { role: MessageRole::User, content: message });
+        hist.push(ConversationMessage { role: MessageRole::Assistant, content: response.text.clone() });
+        if hist.len() > 50 { let keep = hist.len() - 50; hist.rotate_left(keep); hist.truncate(50); }
     }
-
     Ok(response.text)
 }
 
-/// Tauri command: return the conversation history.
 #[tauri::command]
-pub async fn get_history(
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<ConversationMessage>, String> {
+pub async fn get_history(state: tauri::State<'_, AppState>) -> Result<Vec<ConversationMessage>, String> {
     let hist = state.history.lock().await;
     Ok(hist.clone())
 }
 
-/// Tauri command: clear conversation history.
 #[tauri::command]
-pub async fn clear_history(
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
-    let mut hist = state.history.lock().await;
-    hist.clear();
+pub async fn clear_history(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    state.history.lock().await.clear();
     Ok(())
 }
 
-/// Tauri command: transcribe raw PCM f32 mono audio to text using Xiaomi ASR.
+/// Tauri command: transcribe audio. Uses custom URL/key if provider is "custom".
 #[tauri::command]
-pub async fn transcribe_audio(
-    state: tauri::State<'_, AppState>,
-    audio: Vec<f32>,
-) -> Result<String, String> {
-    let token = {
-        let config = state.config.lock().await;
-        resolve_api_token(&config)
+pub async fn transcribe_audio(state: tauri::State<'_, AppState>, audio: Vec<f32>) -> Result<String, String> {
+    let config = state.config.lock().await;
+    let token = resolve_api_token(&config);
+    let asr = if config.asr_provider == "custom" && config.asr_custom_url.is_some() {
+        let key = config.asr_custom_key.clone().unwrap_or_else(|| token.clone());
+        crate::asr::xiaomi_asr::XiaomiAsr::with_url(&key, config.asr_custom_url.as_deref().unwrap_or(""))
+    } else {
+        crate::asr::xiaomi_asr::XiaomiAsr::new(&token)
     };
-    let asr = crate::asr::xiaomi_asr::XiaomiAsr::new(&token);
-    asr.transcribe(&audio).await
-        .map_err(|e| format!("ASR error: {e}"))
+    asr.transcribe(&audio).await.map_err(|e| format!("ASR error: {e}"))
 }
 
-/// Tauri command: synthesize text to audio using Xiaomi TTS.
+/// Tauri command: synthesize text to audio. Uses custom URL/key if provider is "custom".
 #[tauri::command]
-pub async fn synthesize_audio(
-    state: tauri::State<'_, AppState>,
-    text: String,
-    voice: Option<String>,
-) -> Result<Vec<f32>, String> {
-    let token = {
-        let config = state.config.lock().await;
-        resolve_api_token(&config)
+pub async fn synthesize_audio(state: tauri::State<'_, AppState>, text: String, voice: Option<String>) -> Result<Vec<f32>, String> {
+    let config = state.config.lock().await;
+    let v = voice.unwrap_or_else(|| "茉莉".into());
+    let tts = if config.tts_provider == "custom" && config.tts_custom_url.is_some() {
+        let key = config.tts_custom_key.as_deref().map(String::from).unwrap_or_else(|| resolve_api_token(&config));
+        crate::tts::xiaomi_tts::XiaomiTts::with_url(&key, &v, config.tts_custom_url.as_deref().unwrap_or(""))
+    } else {
+        let token = resolve_api_token(&config);
+        crate::tts::xiaomi_tts::XiaomiTts::new(&token, &v)
     };
-    let tts = crate::tts::xiaomi_tts::XiaomiTts::new(
-        &token,
-        &voice.unwrap_or_else(|| "茉莉".into()),
-    );
-    tts.synthesize(&text).await
-        .map_err(|e| format!("TTS error: {e}"))
+    tts.synthesize(&text).await.map_err(|e| format!("TTS error: {e}"))
 }
 
-/// Tauri command: return the current configuration (for Settings UI).
 #[tauri::command]
-pub async fn get_config(
-    state: tauri::State<'_, AppState>,
-) -> Result<CompanionConfig, String> {
+pub async fn get_config(state: tauri::State<'_, AppState>) -> Result<CompanionConfig, String> {
     let config = state.config.lock().await;
     Ok(config.clone())
 }
 
-/// Tauri command: update the configuration.
 #[tauri::command]
-pub async fn update_config(
-    state: tauri::State<'_, AppState>,
-    config: CompanionConfig,
-) -> Result<(), String> {
+pub async fn update_config(state: tauri::State<'_, AppState>, config: CompanionConfig) -> Result<(), String> {
     {
         let mut current = state.config.lock().await;
         *current = config.clone();
@@ -245,78 +171,61 @@ pub async fn update_config(
     Ok(())
 }
 
-/// Tauri command: set the lip-sync level (0.0–1.0).
 #[tauri::command]
-pub async fn set_lip_level(
-    state: tauri::State<'_, AppState>,
-    level: f32,
-) -> Result<(), String> {
+pub async fn set_lip_level(state: tauri::State<'_, AppState>, level: f32) -> Result<(), String> {
     *state.lip_level.lock().unwrap() = level.clamp(0.0, 1.0);
     Ok(())
 }
 
-/// Tauri command: get the current lip-sync level.
 #[tauri::command]
-pub async fn get_lip_level(
-    state: tauri::State<'_, AppState>,
-) -> Result<f32, String> {
+pub async fn get_lip_level(state: tauri::State<'_, AppState>) -> Result<f32, String> {
     Ok(*state.lip_level.lock().unwrap())
 }
 
 /// Tauri command: take a screenshot of a given URL via Playwright.
-/// Only allows http(s) URLs. Returns base64-encoded PNG.
 #[tauri::command]
-pub async fn browse_screenshot(
-    url: String,
-) -> Result<String, String> {
-    // Validate URL scheme
+pub async fn browse_screenshot(url: String) -> Result<String, String> {
     let lower = url.to_lowercase();
     if !lower.starts_with("http://") && !lower.starts_with("https://") {
         return Err("Only http:// and https:// URLs are allowed".into());
     }
-
-    let script = std::env::current_dir()
-        .unwrap_or_default()
-        .join("scripts")
-        .join("browser-screenshot.mjs");
-
-    let tmp = std::env::temp_dir().join(format!(
-        "companion_browse_{}_{}.png",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.subsec_nanos())
-            .unwrap_or(0)
-    ));
-
-    let output = std::process::Command::new("node")
-        .arg(&script)
-        .arg(&url)
-        .arg(&tmp)
-        .arg("15000")
-        .output()
-        .map_err(|e| format!("Browser script failed: {e}"))?;
-
+    let script = std::env::current_dir().unwrap_or_default().join("scripts").join("browser-screenshot.mjs");
+    let tmp = std::env::temp_dir().join(format!("companion_browse_{}_{}.png", std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0)));
+    let output = std::process::Command::new("node").arg(&script).arg(&url).arg(&tmp).arg("15000")
+        .output().map_err(|e| format!("Browser script failed: {e}"))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("Browser failed: {stderr}"));
     }
-
     let bytes = std::fs::read(&tmp).map_err(|e| format!("Read screenshot: {e}"))?;
     std::fs::remove_file(&tmp).ok();
-
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     Ok(format!("data:image/png;base64,{}", STANDARD.encode(&bytes)))
 }
 
-/// Tauri command: return the audit log contents.
 #[tauri::command]
-pub async fn get_audit_log(
-    state: tauri::State<'_, AppState>,
-) -> Result<String, String> {
+pub async fn get_audit_log(state: tauri::State<'_, AppState>) -> Result<String, String> {
     let path = state.audit.path();
-    if !path.exists() {
-        return Ok("(no logs yet)".into());
-    }
+    if !path.exists() { return Ok("(no logs yet)".into()); }
     std::fs::read_to_string(&path).map_err(|e| format!("read log: {e}"))
+}
+
+/// Tauri command: list models from a custom OpenAI-compatible endpoint.
+#[tauri::command]
+pub async fn list_models(base_url: String, api_key: String) -> Result<Vec<String>, String> {
+    let url = format!("{}/models", base_url.trim_end_matches('/'));
+    let client = reqwest::Client::new();
+    let resp = client.get(&url)
+        .header("Authorization", format!("Bearer {api_key}"))
+        .header("Content-Type", "application/json")
+        .timeout(std::time::Duration::from_secs(10))
+        .send().await.map_err(|e| format!("Request failed: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("HTTP {}: {}", resp.status().as_u16(), resp.text().await.unwrap_or_default()));
+    }
+    let body: serde_json::Value = resp.json().await.map_err(|e| format!("Parse error: {e}"))?;
+    let models: Vec<String> = body["data"].as_array().unwrap_or(&vec![]).iter()
+        .filter_map(|v| v["id"].as_str().map(String::from)).collect();
+    Ok(models)
 }

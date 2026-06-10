@@ -16,10 +16,14 @@ pub struct XiaomiTts {
 impl XiaomiTts {
     /// Available voices: mimo_default, 冰糖, 茉莉, 苏打, 白桦, Mia, Chloe, Milo, Dean
     pub fn new(api_key: &str, voice: &str) -> Self {
+        Self::with_url(api_key, voice, "https://token-plan-cn.xiaomimimo.com/v1/chat/completions")
+    }
+
+    pub fn with_url(api_key: &str, voice: &str, base_url: &str) -> Self {
         Self {
             api_key: api_key.to_string(),
             voice: voice.to_string(),
-            base_url: "https://token-plan-cn.xiaomimimo.com/v1/chat/completions".into(),
+            base_url: base_url.to_string(),
             client: reqwest::Client::new(),
         }
     }

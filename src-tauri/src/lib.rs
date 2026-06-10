@@ -46,6 +46,7 @@ pub fn run() {
             state::get_lip_level,
             state::browse_screenshot,
             state::get_audit_log,
+            state::list_models,
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
