@@ -72,3 +72,6 @@ web/.vite/
 *.db
 *.db-shm
 *.db-wal
+
+# WIP services (not ready for commit)
+services/
