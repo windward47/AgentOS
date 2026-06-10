@@ -60,8 +60,10 @@ async function init() {
 
   canvas = document.createElement('canvas'); canvas.width = innerWidth; canvas.height = innerHeight; canvas.style.display = 'block';
   root.innerHTML = ''; root.appendChild(canvas);
-  gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true })!;
+  gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true })!
+    || canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true })!;
   if (!gl) { status('WebGL not available'); return; }
+  console.log('[Haru] GL:', gl instanceof WebGL2RenderingContext ? 'WebGL2' : 'WebGL1');
 
   // Model3.json
   status('Loading model3.json…');
@@ -97,22 +99,33 @@ async function init() {
   idMouth = idMgr.getId(CubismDefaultParameterId.ParamMouthOpenY);
   idEyeL = idMgr.getId(CubismDefaultParameterId.ParamEyeLOpen);
 
-  // Renderer
+  // Renderer — Cubism 5 shader init requires two passes:
+  // 1. First generateShaders() fires async fetch of .frag/.vert files
+  // 2. After files load, _shaderSets must be cleared + regenerated
+  //    (SDK bug: _isShaderLoaded never set, and first gen uses empty sources)
   status('Loading shaders…');
   model.createRenderer(canvas.width, canvas.height);
   renderer = model.getRenderer();
   renderer.startUp(gl);
-  renderer.loadShaders('/live2d/');
 
-  // Wait for shader async load
   const { CubismShaderManager_WebGL } = await import('../live2d/rendering/cubismshader_webgl');
   const shader = CubismShaderManager_WebGL.getInstance().getShader(gl);
-  let waited = 0;
-  while (!(shader as any)._isShaderLoaded && waited < 30) {
-    await new Promise(r => setTimeout(r, 200));
-    waited++;
+  shader.setShaderPath('/live2d/');
+  shader.generateShaders(); // triggers async file fetches
+
+  // Wait for async fetches to populate source strings
+  for (let i = 0; i < 60; i++) {
+    if ((shader as any)._fragShaderSrcPremultipliedAlpha) break;
+    await new Promise(r => setTimeout(r, 250));
   }
-  if (!(shader as any)._isShaderLoaded) { status('Shader load timeout'); return; }
+
+  // Re-generate with populated sources
+  (shader as any)._shaderSets = [];
+  shader.generateShaders();
+
+  // Mark loaded so doDrawModel() doesn't keep regenerating
+  (shader as any)._isShaderLoaded = true;
+  (shader as any)._isShaderLoading = false;
 
   // Idle motion
   status('Loading idle…');
@@ -179,6 +192,9 @@ function loop() {
   // Apply + draw
   cm.update();
   cm.loadParameters();
+
+  gl.clearColor(0.0, 0.0, 0.0, 0.0);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
   const fbo = gl.getParameter(gl.FRAMEBUFFER_BINDING);
   renderer.setRenderState(fbo, [0, 0, canvas.width, canvas.height]);
