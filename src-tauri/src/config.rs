@@ -95,6 +95,7 @@ pub enum ConfigError {
 }
 
 /// Configuration manager — loads, saves, and provides defaults.
+#[derive(Clone)]
 pub struct ConfigManager {
     config_path: PathBuf,
     data_root: PathBuf,
@@ -146,6 +147,11 @@ impl ConfigManager {
         let content = serde_json::to_string_pretty(config)?;
         fs::write(&self.config_path, content)?;
         Ok(())
+    }
+
+    /// Return the data root directory path.
+    pub fn root_dir(&self) -> std::path::PathBuf {
+        self.data_root.clone()
     }
 }
 

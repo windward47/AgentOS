@@ -3,6 +3,7 @@ use crate::agent::omp_rpc::OmpRpcClient;
 use crate::asr::AsrProvider;
 use crate::tts::TtsProvider;
 use crate::config::{CompanionConfig, ConfigManager};
+use crate::permissions::audit::{AuditEvent, AuditLogger};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -25,6 +26,8 @@ pub struct AppState {
     pub agent: Arc<dyn AgentEngine + Send + Sync>,
     /// Conversation history (shared across commands)
     pub history: Arc<Mutex<Vec<ConversationMessage>>>,
+    /// Audit logger for security-sensitive operations
+    pub audit: AuditLogger,
 }
 
 fn resolve_omp_binary() -> String {
@@ -81,6 +84,8 @@ impl AppState {
     pub fn new() -> Self {
         let config_manager = ConfigManager::new().expect("failed to init config manager");
         let config = config_manager.load().expect("failed to load config");
+        let audit = AuditLogger::new(&config_manager.root_dir())
+            .expect("failed to init audit logger");
         let binary = resolve_omp_binary();
 
         Self {
@@ -92,6 +97,7 @@ impl AppState {
             config_manager,
             agent: Arc::new(OmpRpcClient::new(&binary)),
             history: Arc::new(Mutex::new(Vec::new())),
+            audit,
         }
     }
 
@@ -205,7 +211,10 @@ pub async fn update_config(
         *current = config.clone();
     }
     state.save_config().await;
-    state.system_mode.store(config.system_mode, Ordering::SeqCst);
+    let was_mode = state.system_mode.swap(config.system_mode, Ordering::SeqCst);
+    if was_mode != config.system_mode {
+        state.audit.log(AuditEvent::ModeSwitch { from: was_mode, to: config.system_mode });
+    }
     Ok(())
 }
 
@@ -258,4 +267,16 @@ pub async fn browse_screenshot(
 
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     Ok(format!("data:image/png;base64,{}", STANDARD.encode(&bytes)))
+}
+
+/// Tauri command: return the audit log contents.
+#[tauri::command]
+pub async fn get_audit_log(
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let path = state.audit.path();
+    if !path.exists() {
+        return Ok("(no logs yet)".into());
+    }
+    std::fs::read_to_string(&path).map_err(|e| format!("read log: {e}"))
 }

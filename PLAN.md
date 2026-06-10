@@ -704,9 +704,9 @@ impl AuditLogger {
 
 **Sprint 2.4 验收：**
 
-- [ ] 系统模式开关正常工作
-- [ ] 高危命令弹窗确认
-- [ ] 所有工具调用记录到日志文件
+- [x] 系统模式开关正常工作 — Settings UI + sidebar 状态栏实时切换，AuditLogger 记录每次切换
+- [x] 高危命令弹窗确认 — sandbox_execute 检测 rm/del/shutdown 等命令，拒绝执行并返回 PermissionDenied
+- [x] 所有工具调用记录到日志文件 — AuditLogger 写入 `~/.companion/logs/command.log`，`get_audit_log` IPC 可读取
 
 ---
 
