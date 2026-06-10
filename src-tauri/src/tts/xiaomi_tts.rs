@@ -61,8 +61,9 @@ impl XiaomiTts {
 #[async_trait]
 impl TtsProvider for XiaomiTts {
     async fn synthesize(&self, text: &str) -> Result<Vec<f32>, TtsError> {
-        if text.len() > 500 {
-            return Err(TtsError::TextTooLong(text.len()));
+        let char_count = text.chars().count();
+        if char_count > 400 {
+            return Err(TtsError::TextTooLong(char_count));
         }
 
         let body = serde_json::json!({

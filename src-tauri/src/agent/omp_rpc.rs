@@ -194,6 +194,7 @@ impl OmpRpcClient {
                    .arg(&file_arg)
                    .arg("--no-session")
                    .arg("--model").arg(&model)
+                   .arg("--thinking").arg("low")
                    .stdout(Stdio::piped())
                    .stderr(Stdio::inherit());
                 cmd.output()

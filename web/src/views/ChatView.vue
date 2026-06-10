@@ -237,7 +237,7 @@ async function playTTS(text: string, msgIdx: number) {
   stopTTS()
   playingId.value = msgIdx
   try {
-    const textForTTS = text.length > 300 ? text.slice(0, 300) + '…' : text
+    const textForTTS = text.length > 400 ? text.slice(0, 400) + '…' : text
     const pcm = await invoke<number[]>('synthesize_audio', { text: textForTTS, voice: ttsVoice.value })
     if (!pcm || pcm.length === 0) { playingId.value = null; return }
     if (!audioCtx) audioCtx = new AudioContext()
