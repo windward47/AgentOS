@@ -52,34 +52,18 @@ pub fn run() {
             let main_win = app.get_webview_window("main").unwrap();
             main_win.set_title("Companion v0.1.0").ok();
 
-            // Remove config-based avatar window (created before setup)
-            // and recreate with correct URL for dev vs production
+            // In debug mode, redirect avatar window from dist/ (stale)
+            // to Vite dev server so Live2D and HMR work
             if let Some(avatar) = app.get_webview_window("avatar") {
-                let _ = avatar.close();
+                let _ = avatar.set_position(tauri::PhysicalPosition::new(
+                    main_win.outer_size().unwrap().width as i32 + 100,
+                    100,
+                ));
+                #[cfg(debug_assertions)]
+                {
+                    let _ = avatar.eval("location.replace('http://localhost:5173/avatar.html')");
+                }
             }
-            let avatar_url = if cfg!(debug_assertions) {
-                tauri::WebviewUrl::External("http://localhost:5173/avatar.html".parse().unwrap())
-            } else {
-                tauri::WebviewUrl::App("avatar.html".into())
-            };
-            let _avatar = tauri::WebviewWindowBuilder::new(app, "avatar", avatar_url)
-                .title("Haru")
-                .inner_size(360.0, 480.0)
-                .transparent(true)
-                .decorations(false)
-                .always_on_top(true)
-                .skip_taskbar(true)
-                .resizable(true)
-                .visible(true)
-                .build()
-                .map(|w| {
-                    let _ = w.set_position(tauri::PhysicalPosition::new(
-                        main_win.outer_size().unwrap().width as i32 + 100,
-                        100,
-                    ));
-                    w
-                });
-            log::info!("Avatar window created");
 
             log::info!("Companion v{} started", env!("CARGO_PKG_VERSION"));
             Ok(())
