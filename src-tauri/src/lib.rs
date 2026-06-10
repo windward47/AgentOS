@@ -52,17 +52,12 @@ pub fn run() {
             let main_win = app.get_webview_window("main").unwrap();
             main_win.set_title("Companion v0.1.0").ok();
 
-            // In debug mode, redirect avatar window from dist/ (stale)
-            // to Vite dev server so Live2D and HMR work
+            // Position avatar window
             if let Some(avatar) = app.get_webview_window("avatar") {
                 let _ = avatar.set_position(tauri::PhysicalPosition::new(
                     main_win.outer_size().unwrap().width as i32 + 100,
                     100,
                 ));
-                #[cfg(debug_assertions)]
-                {
-                    let _ = avatar.eval("setTimeout(function(){location.replace('http://localhost:5173/avatar.html')}, 1000)");
-                }
             }
 
             log::info!("Companion v{} started", env!("CARGO_PKG_VERSION"));

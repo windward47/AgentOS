@@ -3,22 +3,233 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Avatar</title>
+<title>Haru</title>
 <style>
-  html, body, #root { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:transparent; }
-  #drag-bar { position:fixed; top:0; left:0; right:0; height:28px; z-index:999; cursor:grab; background:transparent; }
-  #drag-bar:active { cursor:grabbing; }
-  #ctx-menu { position:fixed; z-index:9999; background:rgba(30,30,40,0.95); border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:4px; min-width:100px; display:none; backdrop-filter:blur(12px); box-shadow:0 4px 16px rgba(0,0,0,0.4); }
-  #ctx-menu button { display:block; width:100%; padding:6px 12px; border:none; background:none; color:#e0e0e0; font-size:13px; text-align:left; cursor:pointer; border-radius:5px; }
-  #ctx-menu button:hover { background:rgba(255,255,255,0.1); }
+  html, body, #root {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    overflow: hidden; background: transparent; user-select: none;
+  }
+  #drag-bar {
+    position: fixed; top: 0; left: 0; right: 0; height: 28px;
+    z-index: 999; cursor: grab; background: transparent;
+  }
+  #drag-bar:active { cursor: grabbing; }
+  #ctx-menu {
+    position: fixed; z-index: 9999;
+    background: rgba(30,30,40,0.95); border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px; padding: 4px; min-width: 100px; display: none;
+    backdrop-filter: blur(12px); box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  }
+  #ctx-menu button {
+    display: block; width: 100%; padding: 6px 12px;
+    border: none; background: none; color: #e0e0e0; font-size: 13px;
+    text-align: left; cursor: pointer; border-radius: 5px;
+  }
+  #ctx-menu button:hover { background: rgba(255,255,255,0.1); }
+
+  .char {
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    position: relative;
+  }
+  .body-wrap {
+    position: relative;
+    animation: float 3s ease-in-out infinite;
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+  .shadow {
+    width: 60px; height: 8px;
+    background: rgba(255,255,255,.3);
+    border-radius: 50%; margin-top: 4px;
+    animation: shadowPulse 3s ease-in-out infinite;
+  }
+  @keyframes shadowPulse {
+    0%, 100% { transform: scaleX(1); opacity: .6; }
+    50% { transform: scaleX(.8); opacity: .2; }
+  }
+  .hair {
+    width: 120px; height: 72px;
+    background: linear-gradient(180deg, #6b4c9a 0%, #9b7fd4 60%, #c4a8f0 100%);
+    border-radius: 80px 80px 0 0;
+    position: absolute; top: -18px; left: 50%;
+    transform: translateX(-50%); z-index: 3;
+  }
+  .hair::before {
+    content: ''; position: absolute;
+    width: 16px; height: 28px;
+    background: #9b7fd4;
+    border-radius: 0 0 10px 10px;
+    left: 12px; top: 40px;
+  }
+  .hair::after {
+    content: ''; position: absolute;
+    width: 20px; height: 32px;
+    background: #9b7fd4;
+    border-radius: 0 0 12px 12px;
+    right: 8px; top: 36px;
+  }
+  .head {
+    width: 110px; height: 98px;
+    background: linear-gradient(180deg, #fff6f0 0%, #ffe8dd 100%);
+    border-radius: 50%;
+    position: relative;
+    box-shadow: inset 0 -4px 12px rgba(233,175,145,.3);
+  }
+  .eye {
+    width: 14px; height: 16px;
+    background: #3a2a1a;
+    border-radius: 50%;
+    position: absolute; top: 38px;
+    animation: blink 4s ease-in-out infinite;
+  }
+  .eye.l { left: 22px; }
+  .eye.r { right: 22px; }
+  @keyframes blink {
+    0%, 90%, 100% { transform: scaleY(1); }
+    95% { transform: scaleY(.06); }
+  }
+  .pupil {
+    width: 6px; height: 6px;
+    background: #fff;
+    border-radius: 50%;
+    position: absolute; top: 4px; left: 4px;
+  }
+  .brow {
+    width: 18px; height: 3px;
+    background: #6b4c9a;
+    border-radius: 2px;
+    position: absolute; top: 28px;
+  }
+  .brow.l { left: 20px; }
+  .brow.r { right: 20px; }
+  .nose {
+    width: 6px; height: 6px;
+    background: #e8b89d;
+    border-radius: 50%;
+    position: absolute; top: 53px; left: 50%;
+    transform: translateX(-50%);
+  }
+  .mouth {
+    width: 22px; height: 12px;
+    background: #e07060;
+    border-radius: 0 0 11px 11px;
+    position: absolute; top: 66px; left: 50%;
+    transform: translateX(-50%);
+    transition: transform .08s ease;
+  }
+  .blush {
+    width: 14px; height: 8px;
+    background: rgba(255,150,130,.4);
+    border-radius: 50%;
+    position: absolute; top: 56px;
+  }
+  .blush.l { left: 14px; }
+  .blush.r { right: 14px; }
+  .torso {
+    width: 80px; height: 70px;
+    background: linear-gradient(180deg, #7c5cbf 0%, #6b4c9a 40%, #5b3a8c 100%);
+    border-radius: 14px 14px 20px 20px;
+    margin: -8px auto 0;
+    position: relative;
+  }
+  .collar {
+    width: 50px; height: 8px;
+    background: #fff;
+    border-radius: 4px;
+    position: absolute; top: 10px; left: 50%;
+    transform: translateX(-50%);
+  }
+  .bow {
+    width: 22px; height: 14px;
+    position: absolute; top: 2px; left: 50%;
+    transform: translateX(-50%);
+  }
+  .bow::before, .bow::after {
+    content: '';
+    width: 12px; height: 8px;
+    background: #ff6b8a;
+    border-radius: 50%;
+    position: absolute; top: 0;
+  }
+  .bow::before { left: 0; transform: rotate(-15deg); }
+  .bow::after { right: 0; transform: rotate(15deg); }
+  .bow .knot {
+    width: 6px; height: 6px;
+    background: #ff4466;
+    border-radius: 50%;
+    position: absolute; top: 4px; left: 50%;
+    transform: translateX(-50%); z-index: 1;
+  }
 </style>
-<!-- Cubism 4 Core (WebAssembly) — must load before our bundle -->
-<script src="/live2d/live2dcubismcore.min.js"></script>
 </head>
 <body>
 <div id="drag-bar"></div>
 <div id="ctx-menu"><button onclick="closeWindow()">Close Window</button></div>
-<div id="root"></div>
-<script type="module" src="./src/avatar/main.ts"></script>
+<div id="root">
+  <div class="char">
+    <div class="body-wrap">
+      <div class="hair"></div>
+      <div class="head">
+        <div class="brow l"></div>
+        <div class="brow r"></div>
+        <div class="eye l"><div class="pupil"></div></div>
+        <div class="eye r"><div class="pupil"></div></div>
+        <div class="nose"></div>
+        <div class="mouth" id="mouth"></div>
+        <div class="blush l"></div>
+        <div class="blush r"></div>
+      </div>
+      <div class="torso">
+        <div class="collar"></div>
+        <div class="bow"><div class="knot"></div></div>
+      </div>
+    </div>
+    <div class="shadow"></div>
+  </div>
+</div>
+
+<script type="module">
+// Tauri
+let invokeFn = null;
+let gcw = null;
+import('@tauri-apps/api/core').then(m => invokeFn = m.invoke).catch(() => {});
+import('@tauri-apps/api/window').then(m => {
+  gcw = m.getCurrentWindow;
+  document.getElementById('drag-bar').addEventListener('mousedown', e => {
+    if (e.button === 0) gcw()?.startDragging();
+  });
+}).catch(() => {});
+
+document.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const c = document.getElementById('ctx-menu');
+  c.style.left = Math.min(e.clientX, innerWidth - 110) + 'px';
+  c.style.top = Math.min(e.clientY, innerHeight - 50) + 'px';
+  c.style.display = 'block';
+});
+document.addEventListener('click', () => document.getElementById('ctx-menu').style.display = 'none');
+window.closeWindow = () => gcw?.()?.close();
+
+// Lip-sync
+const mouth = document.getElementById('mouth');
+let lipSmooth = 0;
+function lipTick() {
+  if (invokeFn && mouth) {
+    invokeFn('get_lip_level').then(level => {
+      const target = Math.min(Number(level) * 1.6, 1.0);
+      const speed = target > lipSmooth ? 0.35 : 0.15;
+      lipSmooth += (target - lipSmooth) * speed;
+      const sy = 0.35 + lipSmooth * 2.5;
+      mouth.style.transform = `translateX(-50%) scaleY(${Math.min(sy, 3.0)})`;
+    }).catch(() => {});
+  }
+  requestAnimationFrame(lipTick);
+}
+lipTick();
+</script>
 </body>
 </html>
