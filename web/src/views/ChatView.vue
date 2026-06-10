@@ -14,6 +14,7 @@ const shortcutDisplay = ref('Ctrl+Shift+V')
 const ttsAuto = ref(true)
 const ttsVoice = ref('茉莉')
 const ttsSpeed = ref(1.0)
+const voiceMode = ref<'ptt' | 'auto'>('ptt')
 const voices = ['mimo_default', '冰糖', '茉莉', '苏打', '白桦', 'Mia', 'Chloe', 'Milo', 'Dean']
 
 // ── Toast notifications ──
@@ -30,6 +31,12 @@ const interruptSensitivity = ref(0.3)
 
 // ── Voice input ──
 const recording = ref(false)
+// ── Auto-stop VAD state ──
+let autoVadRaf = 0
+let autoSpeechStart = 0
+let autoSilenceStart = 0
+const AUTO_MIN_SPEECH_MS = 400    // must speak ≥ this to qualify for auto-stop
+const AUTO_SILENCE_MS = 1300      // silence after speech → stop
 const vadLevel = ref(0)
 let mediaRecorder: MediaRecorder | null = null
 let audioChunks: Blob[] = []
@@ -48,20 +55,48 @@ async function startRecording() {
     analyserNode.fftSize = 256
     source.connect(analyserNode)
 
-    // VAD monitoring loop
+    // VAD monitoring loop (display + auto-stop)
     const vadData = new Uint8Array(analyserNode.frequencyBinCount)
+    const isAuto = voiceMode.value === 'auto'
+    const threshold = 0.04  // RMS energy threshold for "speaking"
+    autoSpeechStart = 0
+    autoSilenceStart = 0
+
     const vadLoop = () => {
-      if (!analyserNode || !recording.value) return
+      if (!analyserNode || !recording.value) { autoVadRaf = 0; return }
       analyserNode.getByteTimeDomainData(vadData)
       let sum = 0
       for (let i = 0; i < vadData.length; i++) {
         const v = (vadData[i] - 128) / 128
         sum += v * v
       }
-      vadLevel.value = Math.sqrt(sum / vadData.length) * 3
-      if (recording.value) requestAnimationFrame(vadLoop)
+      const rms = Math.sqrt(sum / vadData.length) * 3
+      vadLevel.value = rms
+
+      // Auto-stop logic
+      if (isAuto) {
+        const now = Date.now()
+        if (rms > threshold) {
+          // Speaking
+          if (!autoSpeechStart) autoSpeechStart = now
+          autoSilenceStart = 0
+        } else {
+          // Silence — only auto-stop if user spoke enough first
+          if (autoSpeechStart && (now - autoSpeechStart) >= AUTO_MIN_SPEECH_MS) {
+            if (!autoSilenceStart) autoSilenceStart = now
+            if ((now - autoSilenceStart) >= AUTO_SILENCE_MS) {
+              stopRecording()
+              return
+            }
+          } else {
+            autoSpeechStart = 0
+          }
+        }
+      }
+
+      if (recording.value) autoVadRaf = requestAnimationFrame(vadLoop)
     }
-    requestAnimationFrame(vadLoop)
+    autoVadRaf = requestAnimationFrame(vadLoop)
 
     mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
     audioChunks = []
@@ -91,6 +126,7 @@ async function startRecording() {
 }
 
 function stopRecording() {
+  if (autoVadRaf) { cancelAnimationFrame(autoVadRaf); autoVadRaf = 0 }
   if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop()
   recording.value = false
   analyserNode = null
@@ -125,6 +161,10 @@ async function startBackgroundVAD() {
 
 onMounted(() => {
   startBackgroundVAD()
+  // Load voice mode from config
+  invoke<{ voice_mode: string }>('get_config').then(c => {
+    if (c.voice_mode === 'auto' || c.voice_mode === 'ptt') voiceMode.value = c.voice_mode
+  }).catch(() => {})
 })
 
 onBeforeUnmount(() => {
@@ -386,7 +426,7 @@ async function browseScreenshot() {
       </div>
       <div class="flex items-center gap-3">
         <div class="flex items-center gap-1.5 text-[11px] text-gray-400">
-          <span>PTT:</span>
+          <span>{{ voiceMode === 'auto' ? 'Auto' : 'PTT' }}:</span>
           <button @click="startHotkeyCapture"
             class="px-1.5 py-0.5 rounded border border-gray-200 font-mono text-[10px] hover:border-blue-300 transition-colors">
             {{ shortcutDisplay }}
@@ -470,7 +510,7 @@ async function browseScreenshot() {
             <span v-if="recording" class="text-xs">⏹</span>
             <span v-else>🎤</span>
           </button>
-          <input v-model="input" type="text" :placeholder="'Message or ' + hotkey + ' to speak...'"
+          <input v-model="input" type="text" :placeholder="voiceMode === 'auto' ? 'Speak or type...' : 'Message or ' + hotkey + ' to speak...'"
             class="flex-1 bg-transparent py-2.5 text-[15px] outline-none placeholder:text-gray-400 text-gray-800"
             @keydown.enter="send" :disabled="store.sending" />
           <button @click="send" :disabled="store.sending || !input.trim()"

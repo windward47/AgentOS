@@ -8,6 +8,7 @@ interface Config {
   system_mode: boolean; enable_accessibility: boolean; vad_threshold: number
   user_name: string; style_template: string; custom_system_prompt: string | null
   emotion_mapping: Record<string, string>; api_token: string | null
+  voice_mode: string
 }
 
 const router = useRouter()
@@ -23,6 +24,7 @@ onMounted(async () => {
       system_mode: false, enable_accessibility: false, vad_threshold: 0.3,
       user_name: 'User', style_template: 'professional', custom_system_prompt: null,
       emotion_mapping: {}, api_token: null,
+      voice_mode: 'ptt',
     }
   }
 })
@@ -124,6 +126,18 @@ async function save() {
               <span :class="['pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200',
                             config.enable_accessibility ? 'translate-x-5' : 'translate-x-0']" />
             </button>
+          </div>
+          <div class="flex items-center justify-between py-1">
+            <div>
+              <div class="text-sm font-medium text-gray-900">Voice Mode</div>
+              <div class="text-xs text-gray-500 mt-0.5">Auto-stop recording on silence vs. manual push-to-talk</div>
+            </div>
+            <div class="flex rounded-lg border border-gray-200 bg-gray-50 text-[11px] overflow-hidden">
+              <button type="button" @click="config.voice_mode = 'auto'"
+                :class="['px-3 py-1.5 font-medium transition-colors', config.voice_mode === 'auto' ? 'bg-blue-500 text-white' : 'text-gray-500 hover:text-gray-700']">Auto</button>
+              <button type="button" @click="config.voice_mode = 'ptt'"
+                :class="['px-3 py-1.5 font-medium transition-colors', config.voice_mode === 'ptt' ? 'bg-blue-500 text-white' : 'text-gray-500 hover:text-gray-700']">PTT</button>
+            </div>
           </div>
           <label class="block text-sm font-medium text-gray-700 mb-2">
             VAD Threshold — <span class="text-gray-500 font-normal">{{ config.vad_threshold.toFixed(2) }}</span>

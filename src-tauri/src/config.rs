@@ -35,6 +35,10 @@ pub struct CompanionConfig {
     #[serde(default = "default_vad_threshold")]
     pub vad_threshold: f32,
 
+    /// Voice input mode: "ptt" (push-to-talk, manual stop) or "auto" (VAD auto-stop)
+    #[serde(default = "default_voice_mode")]
+    pub voice_mode: String,
+
     /// User's display name
     #[serde(default = "default_user_name")]
     pub user_name: String,
@@ -66,6 +70,7 @@ fn default_llm() -> String { "siliconflow".into() }
 fn default_asr() -> String { "local".into() }
 fn default_tts() -> String { "local".into() }
 fn default_vad_threshold() -> f32 { 0.3 }
+fn default_voice_mode() -> String { "ptt".into() }
 fn default_user_name() -> String { "User".into() }
 fn default_style() -> String { "professional".into() }
 
@@ -79,6 +84,7 @@ impl Default for CompanionConfig {
             system_mode: false,
             enable_accessibility: false,
             vad_threshold: default_vad_threshold(),
+            voice_mode: default_voice_mode(),
             user_name: default_user_name(),
             style_template: default_style(),
             custom_system_prompt: None,
