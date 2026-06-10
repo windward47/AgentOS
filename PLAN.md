@@ -581,10 +581,10 @@ impl TtsPlayer {
 
 **Sprint 2.1 验收：**
 
-- [ ] TTS 播放时说话 → TTS 立即停止
-- [ ] 打断后新的 ASR 识别结果正常
-- [ ] 误触发率 < 5%（正常办公环境）
-
+- [x] TTS 播放时说话 → TTS 立即停止（后台麦克风监控每 100ms 检测音量 → 超出灵敏度阈值 300ms 后触发打断 → `stopTTS()` + 自动录音 → ASR 转写 → 自动发送）
+- [x] 打断后新的 ASR 识别结果正常（MediaRecorder 独立流，不依赖前端 PTT 按钮状态）
+- [x] 灵敏度可配置：底部 ⏏ Interrupt ON/OFF 按钮 + 300ms 语音持续时长 + Settings 中 VAD Threshold 滑块
+- [~] 误触发率 — 需实际环境测试（已支持用户自调灵敏度，范围 0.0–1.0，默认 0.3）
 ---
 
 ### Sprint 2.2 本地 TTS（3 天）

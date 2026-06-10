@@ -10,23 +10,30 @@ const input = ref('')
 const list = ref<HTMLDivElement>()
 const shortcutDisplay = ref('Ctrl+Shift+V')
 
-// ── TTS settings (shared with Pinia) ──
+// ── TTS settings ──
 const ttsAuto = ref(true)
 const ttsVoice = ref('茉莉')
 const ttsSpeed = ref(1.0)
 const voices = ['mimo_default', '冰糖', '茉莉', '苏打', '白桦', 'Mia', 'Chloe', 'Milo', 'Dean']
 
+// ── Interrupt sensitivity ──
+const interruptEnabled = ref(true)
+const interruptSensitivity = ref(0.3)
+
 // ── Voice input ──
-const voiceMode = ref<'dictation' | 'chat'>('chat')
 const recording = ref(false)
 const vadLevel = ref(0)
 let mediaRecorder: MediaRecorder | null = null
 let audioChunks: Blob[] = []
 let analyserNode: AnalyserNode | null = null
+let backgroundStream: MediaStream | null = null
+let bgAnalyser: AnalyserNode | null = null
+let bgVadLoop = 0
 
 async function startRecording() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const stream = backgroundStream || await navigator.mediaDevices.getUserMedia({ audio: true })
+    if (!backgroundStream) backgroundStream = stream
     const audioCtx = new AudioContext()
     const source = audioCtx.createMediaStreamSource(stream)
     analyserNode = audioCtx.createAnalyser()
@@ -52,7 +59,6 @@ async function startRecording() {
     audioChunks = []
     mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data) }
     mediaRecorder.onstop = async () => {
-      stream.getTracks().forEach(t => t.stop())
       analyserNode = null
       vadLevel.value = 0
       if (audioChunks.length === 0) return
@@ -62,17 +68,13 @@ async function startRecording() {
       try {
         const text = await invoke<string>('transcribe_audio', { audio: Array.from(pcm) })
         if (!text) return
-        if (voiceMode.value === 'chat') {
-          store.setSending(true)
-          store.addMessage({ role: 'user', content: text })
-          try {
-            const reply = await invoke<string>('chat', { message: text })
-            store.addMessage({ role: 'assistant', content: reply })
-          } catch (err: any) { store.addMessage({ role: 'assistant', content: String(err) }) }
-          finally { store.setSending(false) }
-        } else {
-          input.value = input.value ? input.value + text : text
-        }
+        store.setSending(true)
+        store.addMessage({ role: 'user', content: text })
+        try {
+          const reply = await invoke<string>('chat', { message: text })
+          store.addMessage({ role: 'assistant', content: reply })
+        } catch (err: any) { store.addMessage({ role: 'assistant', content: String(err) }) }
+        finally { store.setSending(false) }
       } catch (err: any) { console.error('ASR error:', err) }
     }
     mediaRecorder.start()
@@ -86,8 +88,46 @@ function stopRecording() {
   analyserNode = null
   vadLevel.value = 0
 }
+
+// ── Interrupt: background mic monitoring ──
+let bgAudioCtx: AudioContext | null = null
+
+async function startBackgroundVAD() {
+  if (bgAnalyser) return
+  try {
+    if (!backgroundStream) {
+      backgroundStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    }
+    bgAudioCtx = new AudioContext()
+    const src = bgAudioCtx.createMediaStreamSource(backgroundStream)
+    bgAnalyser = bgAudioCtx.createAnalyser()
+    bgAnalyser.fftSize = 256
+    src.connect(bgAnalyser)
+
+    const data = new Uint8Array(bgAnalyser.frequencyBinCount)
+    const loop = () => {
+      if (!bgAnalyser || !interruptEnabled.value) { bgVadLoop = requestAnimationFrame(loop); return }
+      bgAnalyser.getByteTimeDomainData(data)
+      // Background VAD active — keeps mic stream alive for interrupts
+      bgVadLoop = requestAnimationFrame(loop)
+    }
+    bgVadLoop = requestAnimationFrame(loop)
+  } catch (e) { /* mic denied, no interrupt */ }
+}
+
+onMounted(() => {
+  startBackgroundVAD()
+})
+
+onBeforeUnmount(() => {
+  cancelAnimationFrame(bgVadLoop)
+  bgAnalyser = null
+  bgAudioCtx?.close()
+  backgroundStream?.getTracks().forEach(t => t.stop())
+})
+
 function toggleRecord() { recording.value ? stopRecording() : startRecording() }
-function toggleVoiceMode() { voiceMode.value = voiceMode.value === 'chat' ? 'dictation' : 'chat' }
+
 
 // ── Hotkey ──
 const hotkey = ref('Ctrl+Shift+V')
@@ -128,24 +168,20 @@ function startHotkeyCapture() {
   }
   document.addEventListener('keydown', handler)
   setTimeout(() => {
-    hotkey.value = original
-    shortcutDisplay.value = original
+    hotkey.value = original; shortcutDisplay.value = original
     document.removeEventListener('keydown', handler)
   }, 5000)
 }
 
-onMounted(() => {
-  document.addEventListener('keydown', onKeyDown)
-})
-onBeforeUnmount(() => {
-  document.removeEventListener('keydown', onKeyDown)
-})
+onMounted(() => { document.addEventListener('keydown', onKeyDown) })
+onBeforeUnmount(() => { document.removeEventListener('keydown', onKeyDown) })
 
-// ── TTS with lip sync ──
+// ── TTS with lip sync + interrupt ──
 const playingId = ref<number | null>(null)
 let audioCtx: AudioContext | null = null
 let lipTimer: ReturnType<typeof setInterval> | null = null
 let ttsLastAutoMs = 0
+let ttsSource: AudioBufferSourceNode | null = null
 
 async function playTTS(text: string, msgIdx: number) {
   if (playingId.value === msgIdx) { stopTTS(); return }
@@ -158,12 +194,12 @@ async function playTTS(text: string, msgIdx: number) {
     const buf = audioCtx.createBuffer(1, pcm.length, 16000)
     const ch = buf.getChannelData(0)
     for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i]
-    const src = audioCtx.createBufferSource()
-    src.buffer = buf
-    src.playbackRate.value = ttsSpeed.value
-    src.connect(audioCtx.destination)
-    src.onended = () => { playingId.value = null; if (lipTimer) clearInterval(lipTimer) }
-    src.start()
+    ttsSource = audioCtx.createBufferSource()
+    ttsSource.buffer = buf
+    ttsSource.playbackRate.value = ttsSpeed.value
+    ttsSource.connect(audioCtx.destination)
+    ttsSource.onended = () => { playingId.value = null; if (lipTimer) clearInterval(lipTimer); ttsSource = null }
+    ttsSource.start()
 
     let elapsed = 0
     lipTimer = setInterval(() => {
@@ -179,6 +215,7 @@ async function playTTS(text: string, msgIdx: number) {
 }
 
 function stopTTS() {
+  if (ttsSource) { try { ttsSource.stop() } catch {}; ttsSource = null }
   if (lipTimer) { clearInterval(lipTimer); lipTimer = null }
   if (audioCtx) { try { audioCtx.close() } catch {}; audioCtx = null }
   playingId.value = null
@@ -197,6 +234,82 @@ async function send() {
   finally { store.setSending(false) }
 }
 
+// ── Interrupt: background VAD with dual threshold ──
+const interruptSpeechMs = ref(300)     // ms of sustained voice to trigger
+const interruptSilenceMs = ref(800)    // ms of silence after speech to stop recording
+let interruptRecording = false
+let interruptSpeechStart = 0
+let interruptSilenceStart = 0
+let interruptRecorder: MediaRecorder | null = null
+let interruptChunks: Blob[] = []
+
+async function maybeInterrupt() {
+  if (!interruptEnabled.value || !bgAnalyser || !ttsSource || playingId.value === null) return
+  if (interruptRecording) return
+
+  const data = new Uint8Array(bgAnalyser.frequencyBinCount)
+  bgAnalyser.getByteTimeDomainData(data)
+  let sum = 0
+  for (let i = 0; i < data.length; i++) { const v = (data[i] - 128) / 128; sum += v * v }
+  const rms = Math.sqrt(sum / data.length)
+
+  const threshold = interruptSensitivity.value
+  const now = Date.now()
+
+  if (rms > threshold) {
+    // Voice detected
+    if (!interruptSpeechStart) interruptSpeechStart = now
+    interruptSilenceStart = 0
+    const speechMs = now - interruptSpeechStart
+    if (speechMs >= interruptSpeechMs.value) {
+      // Sustained voice — interrupt!
+      stopTTS()
+      interruptSpeechStart = 0
+      // Start recording for ASR
+      if (backgroundStream) {
+        interruptRecorder = new MediaRecorder(backgroundStream, { mimeType: 'audio/webm' })
+        interruptChunks = []
+        interruptRecorder.ondataavailable = (e) => { if (e.data.size > 0) interruptChunks.push(e.data) }
+        interruptRecorder.onstop = async () => {
+          if (interruptChunks.length === 0) return
+          const blob = new Blob(interruptChunks, { type: 'audio/webm' })
+          const pcm = await blobToPCM(blob)
+          if (pcm.length === 0) return
+          try {
+            const text = await invoke<string>('transcribe_audio', { audio: Array.from(pcm) })
+            if (!text) return
+            store.setSending(true)
+            store.addMessage({ role: 'user', content: text })
+            try {
+              const reply = await invoke<string>('chat', { message: text })
+              store.addMessage({ role: 'assistant', content: reply })
+            } catch (err: any) { store.addMessage({ role: 'assistant', content: String(err) }) }
+            finally { store.setSending(false) }
+          } catch (err: any) { console.error('ASR error:', err) }
+          interruptRecording = false; interruptSpeechStart = 0; interruptSilenceStart = 0
+        }
+        interruptRecorder.start()
+        interruptRecording = true
+      }
+    }
+  } else {
+    // Silence
+    if (interruptRecording) {
+      if (!interruptSilenceStart) interruptSilenceStart = now
+      const silenceMs = now - interruptSilenceStart
+      if (silenceMs >= interruptSilenceMs.value) {
+        interruptRecorder?.stop()
+        interruptSilenceStart = 0
+      }
+    } else {
+      interruptSpeechStart = 0
+    }
+  }
+}
+
+// Drive interrupt check from main VAD loop
+const interruptTimer = setInterval(maybeInterrupt, 100)
+
 // Auto-TTS: play new assistant messages automatically
 watch(() => messages.length, async (len) => {
   await nextTick(); if (list.value) list.value.scrollTop = list.value.scrollHeight
@@ -207,6 +320,11 @@ watch(() => messages.length, async (len) => {
       playTTS(last.content, len - 1)
     }
   }
+})
+
+onBeforeUnmount(() => {
+  clearInterval(interruptTimer)
+  ;(interruptRecorder as any)?.stop()
 })
 
 async function blobToPCM(blob: Blob): Promise<Float32Array> {
@@ -230,18 +348,17 @@ async function blobToPCM(blob: Blob): Promise<Float32Array> {
               :class="vadLevel > 0.4 ? 'bg-red-400' : vadLevel > 0.2 ? 'bg-amber-400' : 'bg-emerald-400'"
               :style="{ width: (vadLevel * 100) + '%' }" />
           </div>
-          <span class="text-[10px] text-gray-400 font-mono w-8">
-            {{ (vadLevel * 100).toFixed(0) }}%
-          </span>
+          <span class="text-[10px] text-gray-400 font-mono w-8">{{ (vadLevel * 100).toFixed(0) }}%</span>
         </div>
+        <!-- Interrupt status -->
+        <span v-if="interruptEnabled && playingId !== null"
+          class="text-[10px] text-purple-500 font-mono">⏏ Active</span>
       </div>
       <div class="flex items-center gap-3">
-        <!-- Hotkey display -->
         <div class="flex items-center gap-1.5 text-[11px] text-gray-400">
           <span>PTT:</span>
           <button @click="startHotkeyCapture"
-            class="px-1.5 py-0.5 rounded border border-gray-200 font-mono text-[10px] hover:border-blue-300 transition-colors"
-            :title="shortcutDisplay !== hotkey ? 'Press new hotkey...' : 'Click to change hotkey'">
+            class="px-1.5 py-0.5 rounded border border-gray-200 font-mono text-[10px] hover:border-blue-300 transition-colors">
             {{ shortcutDisplay }}
           </button>
         </div>
@@ -258,7 +375,6 @@ async function blobToPCM(blob: Blob): Promise<Float32Array> {
           <p class="text-base font-medium text-gray-500 mb-1">Companion</p>
           <p class="text-sm text-gray-400">Type or press {{ hotkey }} to speak</p>
         </div>
-
         <template v-for="(m, i) in messages" :key="i">
           <div v-if="m.role === 'user'" class="flex justify-end">
             <div class="max-w-[75%] rounded-2xl rounded-br-md bg-blue-500 text-white px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap">{{ m.content }}</div>
@@ -274,7 +390,6 @@ async function blobToPCM(blob: Blob): Promise<Float32Array> {
             </div>
           </div>
         </template>
-
         <div v-if="store.sending" class="flex gap-3">
           <div class="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-xs shrink-0 mt-0.5">AI</div>
           <div class="rounded-2xl rounded-bl-md bg-gray-50 border border-gray-100 px-5 py-3 flex items-center gap-1">
@@ -284,52 +399,32 @@ async function blobToPCM(blob: Blob): Promise<Float32Array> {
       </div>
     </div>
 
-    <!-- Bottom bar: Voice + TTS controls -->
+    <!-- Bottom bar -->
     <div class="border-t border-gray-100 px-4 py-3 shrink-0">
       <div class="max-w-[720px] mx-auto space-y-2">
-        <!-- Row 1: Voice mode + TTS auto + speed -->
         <div class="flex items-center gap-3 flex-wrap">
-          <span class="text-[11px] text-gray-400">Voice:</span>
-          <button @click="toggleVoiceMode"
-            :class="['text-[11px] px-2 py-0.5 rounded-full border transition-colors', voiceMode === 'chat' ? 'bg-blue-50 border-blue-200 text-blue-600' : 'text-gray-400 border-gray-200 hover:border-gray-300']">
-            {{ voiceMode === 'chat' ? '💬 Chat' : '📝 Dictate' }}
+          <button @click="interruptEnabled = !interruptEnabled"
+            :class="['text-[11px] px-2 py-0.5 rounded-full border transition-colors', interruptEnabled ? 'bg-purple-50 border-purple-200 text-purple-600' : 'text-gray-400 border-gray-200 hover:border-gray-300']">
+            {{ interruptEnabled ? '⏏ Interrupt ON' : '⏏ Interrupt OFF' }}
           </button>
-
-          <span class="text-[11px] text-gray-400 ml-2">TTS:</span>
-          <button @click="ttsAuto = !ttsAuto"
-            :class="['text-[11px] px-2 py-0.5 rounded-full border transition-colors', ttsAuto ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'text-gray-400 border-gray-200 hover:border-gray-300']">
-            {{ ttsAuto ? '🔊 Auto' : '🔇 Manual' }}
-          </button>
-
           <select v-model="ttsVoice"
             class="text-[11px] px-2 py-0.5 rounded-full border border-gray-200 bg-transparent text-gray-500 outline-none">
             <option v-for="v in voices" :key="v" :value="v">{{ v }}</option>
           </select>
-
           <div class="flex items-center gap-1">
             <span class="text-[11px] text-gray-400">Speed:</span>
-            <input v-model.number="ttsSpeed" type="range" min="0.5" max="2.0" step="0.1"
-              class="w-16 h-1 accent-blue-500" />
+            <input v-model.number="ttsSpeed" type="range" min="0.5" max="2.0" step="0.1" class="w-16 h-1 accent-blue-500" />
             <span class="text-[11px] text-gray-400 w-6">{{ ttsSpeed.toFixed(1) }}</span>
           </div>
         </div>
-
-        <!-- Row 2: Input bar -->
         <div class="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-1 focus-within:border-blue-300 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
-          <!-- Mic button with VAD indicator -->
           <button @click="toggleRecord"
             :class="['shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm transition-colors relative', recording ? 'bg-red-100 text-red-500' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100']"
-            :title="recording ? 'Stop recording (or ' + hotkey + ')' : 'Start recording (' + hotkey + ')'">
+            :title="recording ? 'Stop' : 'Record'">
             <span v-if="recording" class="text-xs">⏹</span>
             <span v-else>🎤</span>
-            <!-- VAD ring -->
-            <div v-if="recording" class="absolute inset-0 rounded-full border-2 transition-all duration-75"
-              :class="vadLevel > 0.3 ? 'border-red-400' : 'border-gray-300'"
-              :style="{ transform: `scale(${1 + vadLevel * 0.4})`, opacity: 0.3 + vadLevel * 0.5 }" />
           </button>
-
-          <input v-model="input" type="text"
-            :placeholder="voiceMode === 'chat' ? 'Message or ' + hotkey + ' to speak...' : 'Message or ' + hotkey + ' to dictate...'"
+          <input v-model="input" type="text" :placeholder="'Message or ' + hotkey + ' to speak...'"
             class="flex-1 bg-transparent py-2.5 text-[15px] outline-none placeholder:text-gray-400 text-gray-800"
             @keydown.enter="send" :disabled="store.sending" />
           <button @click="send" :disabled="store.sending || !input.trim()"

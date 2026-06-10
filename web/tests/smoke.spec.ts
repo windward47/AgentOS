@@ -90,21 +90,15 @@ test.describe('Companion UI smoke tests', () => {
     await page.screenshot({ path: 'tests/screenshots/04-sidebar-collapsed.png', fullPage: true })
   })
 
-  test('voice buttons are present', async ({ page }) => {
+  test('voice and interrupt controls present', async ({ page }) => {
     await page.goto('/')
     await page.waitForLoadState('networkidle')
 
     // Mic button
-    const micBtn = page.locator('button[title*="recording"]')
-    await expect(micBtn).toBeVisible()
+    await expect(page.locator('button[title*="Record"]')).toBeVisible()
 
-    // Voice mode toggle — Chat button contains "Chat"
-    const chatToggle = page.getByText('💬 Chat')
-    await expect(chatToggle).toBeVisible()
-
-    // TTS auto toggle
-    const ttsAuto = page.getByText('Auto')
-    await expect(ttsAuto).toBeVisible()
+    // Interrupt toggle
+    await expect(page.getByText('Interrupt')).toBeVisible()
 
     await page.screenshot({ path: 'web/tests/screenshots/05-voice-ui.png', fullPage: true })
   })

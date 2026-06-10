@@ -168,6 +168,21 @@ Live2D 不应该和聊天 UI 挤在同一个 Vue 组件里。正确做法：
 实际的 ASR/TTS 接口是 `/v1/chat/completions`——通过 `input_audio` 和 `audio` modality 参数实现。
 **不会 curl 实测就直接开始写代码，必然走弯路。**
 
+## Current Sprint Status
+
+| Sprint | Status | Core Deliverable |
+|--------|--------|-----------------|
+| 1.1 | ✅ | Chat + omp -p + Nex-N2-Pro |
+| 1.2 | ✅ | Sandbox (5 tools, path escape) |
+| 1.3 | ✅ | ASR/TTS (Xiaomi chat API) + voice UI |
+| 1.4 | ✅ | Live2D multi-window + lip sync (IPC bridge) |
+| 1.5 | ✅ | omp config (Windows .cmd, SiliconFlow) |
+| 1.6 | ⚠️ | Settings UI done; model switch deferred to Phase 2 |
+| **2.1** | **✅** | **Interrupt: bg VAD → stop TTS → ASR → auto-send** |
+| 2.2 | 📋 | Local TTS (ChatTTS) |
+| 2.3 | 📋 | Browser control (Playwright) |
+| 2.4 | 📋 | System mode + security log |
+
 ## Notes
 
 <!-- Quick-add space for future agent notes -->
