@@ -84,6 +84,22 @@ fn build_tool_prompt(registry: &ToolRegistry) -> String {
     prompt
 }
 
+/// Quick heuristic: does this message likely need sandbox tools?
+/// Checks for file/command operation keywords to avoid injecting
+/// tool definitions into casual chat (jokes, small talk, greetings).
+fn tool_likely(message: &str) -> bool {
+    let lower = message.to_lowercase();
+    let keywords = [
+        "file", "dir", "directory", "folder", "path",
+        "create", "write", "read", "delete", "remove", "list",
+        "command", "run", "execute", "script", "shell", "bash",
+        "text", "content", "save", "open", "edit", "copy", "move", "rename",
+        "sandbox", "tool", "帮我", "文件", "目录", "创建", "写入",
+        "删除", "读取", "命令", "执行", "运行", "脚本",
+    ];
+    keywords.iter().any(|k| lower.contains(k))
+}
+
 /// Try to parse a tool-call JSON from omp's text response.
 /// Returns `Some((name, args))` if the entire response is a single JSON tool call.
 fn parse_tool_call(text: &str) -> Option<(String, serde_json::Value)> {
@@ -269,7 +285,8 @@ impl AgentEngine for OmpRpcClient {
         history: &[ConversationMessage],
     ) -> Result<AgentResponse, AgentError> {
         let prompt = build_prompt(message, history);
-        if self.tools.is_some() {
+        let use_tools = self.tools.is_some() && tool_likely(message);
+        if use_tools {
             self.chat_with_tools(&prompt).await
         } else {
             let text = self.run_omp(&prompt, "").await?;
