@@ -52,12 +52,14 @@ pub fn run() {
             let main_win = app.get_webview_window("main").unwrap();
             main_win.set_title("Companion v0.1.0").ok();
 
-            // Position avatar window (loads from built dist/)
+            // Position avatar window + open DevTools for debugging
             if let Some(avatar) = app.get_webview_window("avatar") {
                 let _ = avatar.set_position(tauri::PhysicalPosition::new(
                     main_win.outer_size().unwrap().width as i32 + 100,
                     100,
                 ));
+                // Open DevTools on avatar window to see errors
+                avatar.open_devtools();
             }
 
             log::info!("Companion v{} started", env!("CARGO_PKG_VERSION"));
