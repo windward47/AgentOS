@@ -120,7 +120,10 @@ async function init() {
     const mm = (model as any)._motionManager;
     const idleBuf = await fetchBuf('motion/haru_g_idle.motion3.json');
     const m = CubismMotion.create(idleBuf, idleBuf.byteLength);
-    if (m) mm.startMotionPriority(m, false, 1);
+    if (m) {
+      m.setEffectIds([], []); // eye blink + lip sync handled separately
+      mm.startMotionPriority(m, false, 1);
+    }
   } catch {}
 
   // Expression list
@@ -142,7 +145,10 @@ async function cycleExpr() {
   try {
     const buf = await (await fetch(BASE + 'motion/' + name)).arrayBuffer();
     const m = CubismMotion.create(buf, buf.byteLength);
-    if (m) (model as any)._motionManager?.startMotionPriority(m, false, 3);
+    if (m) {
+      m.setEffectIds([], []);
+      (model as any)._motionManager?.startMotionPriority(m, false, 3);
+    }
   } catch {}
   setTimeout(cycleExpr, 5000 + Math.random() * 7000);
 }
@@ -153,10 +159,12 @@ function loop() {
   lastTime = now;
   if (!cm || !renderer) { requestAnimationFrame(loop); return; }
 
-  // Motion updates
-  const mm = (model as any)._motionManager;
-  mm?.updateMotion?.(cm, dt);
-  (model as any)._expressionManager?.updateMotion?.(cm, dt);
+  // Motion updates (wrapped — errors in motions shouldn't kill the renderer)
+  try {
+    const mm = (model as any)._motionManager;
+    mm?.updateMotion?.(cm, dt);
+    (model as any)._expressionManager?.updateMotion?.(cm, dt);
+  } catch (e) { /* motion parse error — model still draws */ }
 
   // Effects
   eyeBlink?.updateParameters(cm, dt);
