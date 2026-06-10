@@ -134,66 +134,75 @@ impl OmpRpcClient {
         }
     }
 
-/// Escape characters that break Windows .cmd file argument parsing.
-/// On Windows, `omp` resolves to `omp.cmd` which is re-parsed by cmd.exe.
-/// Double quotes in arguments must be escaped as `\"`.
-#[cfg(target_os = "windows")]
-fn escape_cmd_arg(s: &str) -> String {
-    s.replace('"', "\\\"")
-}
+    /// Run `omp -p` with optional tool prompts. 60-second timeout.
+    ///
+    /// The full prompt (message + optional tool definitions) is written to a
+    /// temporary file and passed via `omp -p @file`.  This avoids cmd.exe
+    /// argument-length limits (8191 chars) and special-character mangling
+    /// on Windows where `omp` resolves to `omp.cmd` (batch wrapper).
+    async fn run_omp(
+        &self,
+        message: &str,
+        tool_prompt: &str,
+    ) -> Result<String, AgentError> {
+        let binary = self.binary.clone();
+        let model = self.model.lock().unwrap().clone();
 
-#[cfg(not(target_os = "windows"))]
-fn escape_cmd_arg(s: &str) -> String {
-    s.to_string()
-}
+        // Build the full prompt: tool definitions + user message
+        let full_prompt = if tool_prompt.is_empty() {
+            message.to_string()
+        } else {
+            format!("{tool_prompt}\n\n{message}")
+        };
 
-/// Run `omp -p` with optional tool prompts. 60-second timeout.
-/// On Windows, writes the full prompt to a temp file to avoid cmd.exe
-/// argument length / quoting issues with complex prompts containing history,
-/// JSON tool definitions, and user messages with special characters.
-async fn run_omp(
-    &self,
-    message: &str,
-    tool_prompt: &str,
-) -> Result<String, AgentError> {
-    let binary = self.binary.clone();
-    let msg = Self::escape_cmd_arg(message);
-    let model = self.model.lock().unwrap().clone();
-    let tool_prompt = Self::escape_cmd_arg(tool_prompt);
-
-    let output = tokio::time::timeout(
-        std::time::Duration::from_secs(60),
-        tokio::task::spawn_blocking(move || {
-            let mut cmd = Command::new(&binary);
-            cmd.arg("-p")
-               .arg(&msg)
-               .arg("--no-session")
-               .arg("--model").arg(&model)
-               .stdout(Stdio::piped())
-               .stderr(Stdio::inherit());
-
-            if !tool_prompt.is_empty() {
-                cmd.arg("--append-system-prompt").arg(&tool_prompt);
-            }
-
-            cmd.output()
-        }),
-    )
-    .await
-    .map_err(|_| AgentError::Timeout)?  // 60s elapsed
-    .map_err(|e| AgentError::SubprocessCrashed(format!("spawn_blocking failed: {e}")))?
-    .map_err(|e| AgentError::SubprocessCrashed(format!("omp process failed: {e}")))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AgentError::AgentReturnedError(
-            format!("omp exited with {}: {stderr}",
-                output.status.code().unwrap_or(-1))
+        // Write to temp file — circumvents cmd.exe argument quoting / length limits
+        let tmp_path = std::env::temp_dir().join(format!(
+            "companion_omp_{}_{}.txt",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.subsec_nanos())
+                .unwrap_or(0)
         ));
-    }
+        std::fs::write(&tmp_path, &full_prompt)
+            .map_err(|e| AgentError::SubprocessCrashed(format!("write omp tempfile: {e}")))?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    Ok(stdout)
+        // omp @file syntax: reads the prompt from a file
+        let file_arg = format!("@{}", tmp_path.display());
+
+        let output_result = tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            tokio::task::spawn_blocking(move || {
+                let mut cmd = Command::new(&binary);
+                cmd.arg("-p")
+                   .arg(&file_arg)
+                   .arg("--no-session")
+                   .arg("--model").arg(&model)
+                   .stdout(Stdio::piped())
+                   .stderr(Stdio::inherit());
+                cmd.output()
+            }),
+        )
+        .await;
+
+        // Clean up temp file regardless of outcome
+        std::fs::remove_file(&tmp_path).ok();
+
+        let output = output_result
+            .map_err(|_| AgentError::Timeout)?
+            .map_err(|e| AgentError::SubprocessCrashed(format!("spawn_blocking failed: {e}")))?
+            .map_err(|e| AgentError::SubprocessCrashed(format!("omp process failed: {e}")))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AgentError::AgentReturnedError(
+                format!("omp exited with {}: {stderr}",
+                    output.status.code().unwrap_or(-1))
+            ));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Ok(stdout)
     }
 
     /// Tool-calling loop: call omp, parse tool calls, execute, feed back.
