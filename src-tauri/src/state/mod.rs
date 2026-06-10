@@ -1,9 +1,10 @@
 use crate::agent::{AgentEngine, ConversationMessage, MessageRole};
-use crate::agent::omp_rpc::OmpRpcClient;
+use crate::agent::omp_rpc::{OmpRpcClient, provider_to_model};
 use crate::asr::AsrProvider;
 use crate::tts::TtsProvider;
 use crate::config::{CompanionConfig, ConfigManager};
 use crate::permissions::audit::{AuditEvent, AuditLogger};
+use crate::tools::ToolRegistry;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -22,8 +23,10 @@ pub struct AppState {
     pub config: Arc<Mutex<CompanionConfig>>,
     /// Configuration persistence manager
     pub config_manager: ConfigManager,
-    /// The Agent engine — auto-spawns on first use
-    pub agent: Arc<dyn AgentEngine + Send + Sync>,
+    /// The Agent engine — OMP subprocess client with tool-calling loop
+    pub agent: Arc<OmpRpcClient>,
+    /// Tool registry for sandbox file + command tools
+    pub tools: Arc<ToolRegistry>,
     /// Conversation history (shared across commands)
     pub history: Arc<Mutex<Vec<ConversationMessage>>>,
     /// Audit logger for security-sensitive operations
@@ -88,6 +91,13 @@ impl AppState {
             .expect("failed to init audit logger");
         let binary = resolve_omp_binary();
 
+        let sandbox_root = config_manager.root_dir().join("sandbox");
+        let tools = Arc::new(ToolRegistry::with_builtins(sandbox_root));
+
+        let model = provider_to_model(&config.llm_provider).to_string();
+        let agent = Arc::new(OmpRpcClient::with_tools(&binary, tools.clone()));
+        agent.set_model(model);
+
         Self {
             system_mode: AtomicBool::new(config.system_mode),
             is_speaking: AtomicBool::new(false),
@@ -95,7 +105,8 @@ impl AppState {
             lip_level: std::sync::Mutex::new(0.0),
             config: Arc::new(Mutex::new(config)),
             config_manager,
-            agent: Arc::new(OmpRpcClient::new(&binary)),
+            agent,
+            tools,
             history: Arc::new(Mutex::new(Vec::new())),
             audit,
         }
@@ -215,6 +226,9 @@ pub async fn update_config(
     if was_mode != config.system_mode {
         state.audit.log(AuditEvent::ModeSwitch { from: was_mode, to: config.system_mode });
     }
+    // Bridge: sync LLM provider → omp --model
+    let model = provider_to_model(&config.llm_provider).to_string();
+    state.agent.set_model(model);
     Ok(())
 }
 

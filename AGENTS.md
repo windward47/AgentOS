@@ -177,7 +177,7 @@ Live2D 不应该和聊天 UI 挤在同一个 Vue 组件里。正确做法：
 | 1.3 | ✅ | ASR/TTS (Xiaomi chat API) + voice UI |
 | 1.4 | ✅ | Live2D multi-window + lip sync (IPC bridge) |
 | 1.5 | ✅ | omp config (Windows .cmd, SiliconFlow) |
-| 1.6 | ⚠️ | Settings UI done; model switch deferred to Phase 2 |
+| 1.6 | ✅ | Settings UI done; model + tool bridges to omp |
 | **2.1** | **✅** | **Interrupt: bg VAD → stop TTS → ASR → auto-send** |
 | 2.2 | 📋 | Local TTS (ChatTTS) |
 | 2.3 | ✅ | Browser screenshot (Playwright headless Chrome) |

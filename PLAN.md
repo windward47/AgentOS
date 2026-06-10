@@ -285,8 +285,8 @@ impl ToolRegistry {
 **Sprint 1.1 验收：**
 
 - [x] 在聊天框输入文字，LLM 能回复
-- [~] 可以在云端和本地间切换 — Settings UI 有下拉框但未桥接到 omp 的 models.yml
-- [~] LLM 能看到已注册的工具列表 — ToolRegistry 存在但 omp -p 不支持工具注入
+- [x] 可以在云端和本地间切换 — Settings LLM dropdown 已桥接到 omp --model 标志（provider_to_model 映射）
+- [x] LLM 能看到已注册的工具列表 — ToolRegistry 通过工具调用循环注入 omp（--append-system-prompt + 解析 JSON tool-call）
 
 ---
 
@@ -360,7 +360,7 @@ pub struct CommandTool {
 - [x] 路径逃逸被拒绝并返回错误信息
 - [x] 命令执行返回 stdout/stderr
 - [x] 含 `;` 或 `|` 的命令被拒绝
-- [~] Agent 可以通过自然语言操作沙盒文件 — 工具已实现但未接入 omp 对话（需 MCP/工具注入）
+- [x] Agent 可以通过自然语言操作沙盒文件 — 工具调用循环已实现（omp --append-system-prompt + JSON tool-call 解析 + ToolRegistry 执行）
 
 ---
 
@@ -529,9 +529,9 @@ API 通过 `sensenova` provider alias 配置在 `models.yml` 中，指向 `api.s
 - [x] Settings 页面可打开/关闭，UI 正常（9 项配置：LLM/ASR/TTS providers, sandbox, VAD, user, style, prompt, TTS-always-on）
 - [x] 状态栏显示 Sandbox/Unrestricted 模式（sidebar 底部，`get_config` 实时读取）
 - [x] 配置持久化到 `~/.companion/config.json`（ConfigManager.save/load），重启保留
-- [~] LLM 提供商切换立即生效 — Settings 改的是 CompanionConfig，omp 读独立的 `~/.omp/agent/config.yml`，需要阶段二桥接
-- [~] Agent 通过自然语言操作沙盒 — 工具已实现但 `omp -p` stateless 不支持工具注入，需阶段二 MCP/会话模式
-- [ ] 操作日志 — 未实现，阶段二 SYSLOG 子任务
+- [x] LLM 提供商切换立即生效 — Settings 改 CompanionConfig.llm_provider → provider_to_model() → agent.set_model() → omp --model
+- [x] Agent 通过自然语言操作沙盒 — 工具调用循环已实现（omp --append-system-prompt 注入工具定义 + parse_tool_call + ToolRegistry.execute，最大 5 次迭代）
+- [x] 操作日志 — AuditLogger 写入 `~/.companion/logs/command.log`，get_audit_log IPC 可读取
 
 ---
 
@@ -673,7 +673,7 @@ ydotool click 1
 - [x] 浏览器截图功能 — `browse_screenshot` Tauri 命令 → Playwright headless Chrome → 返回 base64 PNG
 - [x] 界面集成 — ChatView 底部浏览器栏（URL 输入 + 🌐 Screenshot 按钮 + 截图预览）
 - [x] 安全控制 — 仅管理员可调用（非 omp 工具，是 Tauri IPC 直接命令）
-- [~] 完整浏览器自动化（click/type/evaluate）— 需 omp 会话模式注入工具，阶段三补齐
+- [~] 完整浏览器自动化（click/type/evaluate）— 工具调用循环已实现，浏览器自动化工具可后续注册到 ToolRegistry
 
 ---
 
