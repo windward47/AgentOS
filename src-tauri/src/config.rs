@@ -50,6 +50,10 @@ pub struct CompanionConfig {
     /// Emotion → style mapping
     #[serde(default)]
     pub emotion_mapping: HashMap<String, String>,
+
+    /// API token for Xiaomi/cloud services (env COMPANION_API_TOKEN overrides)
+    #[serde(default)]
+    pub api_token: Option<String>,
 }
 
 fn default_sandbox_path() -> PathBuf {
@@ -79,6 +83,7 @@ impl Default for CompanionConfig {
             style_template: default_style(),
             custom_system_prompt: None,
             emotion_mapping: HashMap::new(),
+            api_token: None,
         }
     }
 }
@@ -133,8 +138,11 @@ impl ConfigManager {
         }
 
         let content = fs::read_to_string(&self.config_path)?;
-        serde_json::from_str(&content).or_else(|_| {
-            // Fall back to defaults on parse error
+        serde_json::from_str(&content).or_else(|e| {
+            // Backup corrupt config before overwriting
+            let bak = self.config_path.with_extension("json.bak");
+            let _ = fs::write(&bak, &content);
+            eprintln!("[ConfigManager] corrupt config backed up to {bak:?}: {e}");
             let default = CompanionConfig::default();
             self.save(&default).ok();
             Ok(default)

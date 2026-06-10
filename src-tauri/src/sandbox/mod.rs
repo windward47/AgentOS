@@ -43,6 +43,7 @@ impl Sandbox {
     /// 2. Rejects absolute paths (user must provide relative paths)
     /// 3. Canonicalises and verifies the result is inside the sandbox
     /// 4. Follows symlinks and verifies the *target* is inside the sandbox
+    /// 5. For non-existent paths (e.g. new file creation), canonicalises the parent
     pub fn resolve(&self, user_path: &str) -> Result<PathBuf, SandboxError> {
         // Reject dangerous characters
         if user_path.chars().any(|c| DANGEROUS_CHARS.contains(&c)) {
@@ -62,22 +63,36 @@ impl Sandbox {
         let full = root_canonical.join(path);
 
         // Canonicalise to resolve .. and symlinks
-        let canonical = std::fs::canonicalize(&full).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                SandboxError::NotFound(user_path.to_string())
-            } else {
-                SandboxError::Io(e)
+        match std::fs::canonicalize(&full) {
+            Ok(canonical) => {
+                // Verify the canonical path starts with the canonical root
+                if !canonical.starts_with(&root_canonical) {
+                    return Err(SandboxError::Escape(format!(
+                        "{user_path} resolves outside sandbox"
+                    )));
+                }
+                Ok(canonical)
             }
-        })?;
-
-        // Verify the canonical path starts with the canonical root
-        if !canonical.starts_with(&root_canonical) {
-            return Err(SandboxError::Escape(format!(
-                "{user_path} resolves outside sandbox"
-            )));
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // File doesn't exist yet (e.g. sandbox_write creating a new file).
+                // Validate by canonicalising the parent directory and joining.
+                let parent = full.parent()
+                    .ok_or_else(|| SandboxError::NotFound(user_path.to_string()))?;
+                let parent_canon = std::fs::canonicalize(parent).map_err(|_| {
+                    SandboxError::NotFound(format!("parent of {user_path}"))
+                })?;
+                if !parent_canon.starts_with(&root_canonical) {
+                    return Err(SandboxError::Escape(format!(
+                        "{user_path} resolves outside sandbox"
+                    )));
+                }
+                Ok(parent_canon.join(
+                    full.file_name()
+                        .ok_or_else(|| SandboxError::NotFound(user_path.to_string()))?
+                ))
+            }
+            Err(e) => Err(SandboxError::Io(e)),
         }
-
-        Ok(canonical)
     }
 
     /// Return the sandbox root path.
@@ -117,6 +132,19 @@ mod tests {
         assert!(s.resolve("file|cat").is_err());
         assert!(s.resolve("file&cmd").is_err());
         assert!(s.resolve("$PATH").is_err());
+    }
+
+    #[test]
+    fn test_resolve_new_file() {
+        // sandbox_write should be able to resolve paths for new files
+        let dir = std::env::temp_dir().join("companion_sandbox_newfile");
+        fs::create_dir_all(&dir).unwrap();
+        let s = Sandbox::new(dir.clone());
+        let resolved = s.resolve("new_file.txt").unwrap();
+        let canonical_dir = std::fs::canonicalize(&dir).unwrap_or(dir.clone());
+        assert!(resolved.starts_with(&canonical_dir));
+        assert!(resolved.ends_with("new_file.txt"));
+        fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

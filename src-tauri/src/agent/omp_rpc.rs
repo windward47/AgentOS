@@ -32,7 +32,31 @@ pub fn provider_to_model(provider: &str) -> &'static str {
     }
 }
 
-/// Build the tool-definitions appendix for the system prompt.
+/// Format conversation history as a transcript to prepend to the message.
+fn format_history(history: &[ConversationMessage]) -> String {
+    if history.is_empty() {
+        return String::new();
+    }
+
+    let mut transcript = String::from("## Previous conversation\n\n");
+    for msg in history {
+        let role = match msg.role {
+            super::MessageRole::User => "User",
+            super::MessageRole::Assistant => "Assistant",
+            super::MessageRole::System => "System",
+            super::MessageRole::Tool => "Tool",
+        };
+        transcript.push_str(&format!("**{role}:** {}\n\n", msg.content));
+    }
+    transcript.push_str("## Current message\n\n");
+    transcript
+}
+
+/// Build the full prompt: history transcript + current message.
+fn build_prompt(message: &str, history: &[ConversationMessage]) -> String {
+    let hist = format_history(history);
+    format!("{hist}{message}")
+}
 fn build_tool_prompt(registry: &ToolRegistry) -> String {
     let defs = registry.definitions();
     if defs.is_empty() {
@@ -110,8 +134,7 @@ impl OmpRpcClient {
         }
     }
 
-    /// Run `omp -p <message> --no-session` and return stdout.
-    /// Optionally appends tool definitions via `--append-system-prompt`.
+    /// Run `omp -p` with optional tool prompts. 60-second timeout.
     async fn run_omp(
         &self,
         message: &str,
@@ -122,22 +145,26 @@ impl OmpRpcClient {
         let model = self.model.lock().unwrap().clone();
         let tool_prompt = tool_prompt.to_string();
 
-        let output = tokio::task::spawn_blocking(move || {
-            let mut cmd = Command::new(&binary);
-            cmd.arg("-p")
-               .arg(&msg)
-               .arg("--no-session")
-               .arg("--model").arg(&model)
-               .stdout(Stdio::piped())
-               .stderr(Stdio::inherit());
+        let output = tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            tokio::task::spawn_blocking(move || {
+                let mut cmd = Command::new(&binary);
+                cmd.arg("-p")
+                   .arg(&msg)
+                   .arg("--no-session")
+                   .arg("--model").arg(&model)
+                   .stdout(Stdio::piped())
+                   .stderr(Stdio::inherit());
 
-            if !tool_prompt.is_empty() {
-                cmd.arg("--append-system-prompt").arg(&tool_prompt);
-            }
+                if !tool_prompt.is_empty() {
+                    cmd.arg("--append-system-prompt").arg(&tool_prompt);
+                }
 
-            cmd.output()
-        })
+                cmd.output()
+            }),
+        )
         .await
+        .map_err(|_| AgentError::Timeout)?  // 60s elapsed
         .map_err(|e| AgentError::SubprocessCrashed(format!("spawn_blocking failed: {e}")))?
         .map_err(|e| AgentError::SubprocessCrashed(format!("omp process failed: {e}")))?;
 
@@ -214,12 +241,13 @@ impl AgentEngine for OmpRpcClient {
     async fn chat(
         &self,
         message: &str,
-        _history: &[ConversationMessage],
+        history: &[ConversationMessage],
     ) -> Result<AgentResponse, AgentError> {
+        let prompt = build_prompt(message, history);
         if self.tools.is_some() {
-            self.chat_with_tools(message).await
+            self.chat_with_tools(&prompt).await
         } else {
-            let text = self.run_omp(message, "").await?;
+            let text = self.run_omp(&prompt, "").await?;
             Ok(AgentResponse { text, tool_calls: vec![] })
         }
     }
@@ -230,9 +258,16 @@ impl AgentEngine for OmpRpcClient {
         history: &[ConversationMessage],
     ) -> Result<tokio::sync::mpsc::Receiver<AgentStreamEvent>, AgentError> {
         let response = self.chat(message, history).await?;
-        let (tx, rx) = tokio::sync::mpsc::channel(16);
+        let (tx, rx) = tokio::sync::mpsc::channel(32);
         let text = response.text;
+        let tool_calls = response.tool_calls;
         tokio::spawn(async move {
+            // Emit tool-call events
+            for tool in &tool_calls {
+                let _ = tx.send(AgentStreamEvent::ToolStarted { name: tool.clone() }).await;
+                let _ = tx.send(AgentStreamEvent::ToolCompleted { name: tool.clone(), result: String::new() }).await;
+            }
+            // Emit text tokens word-by-word
             for word in text.split(' ') {
                 if tx.send(AgentStreamEvent::Token(word.to_string())).await.is_err() {
                     break;

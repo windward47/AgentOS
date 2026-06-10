@@ -7,7 +7,7 @@ interface Config {
   sandbox_path: string; llm_provider: string; asr_provider: string; tts_provider: string
   system_mode: boolean; enable_accessibility: boolean; vad_threshold: number
   user_name: string; style_template: string; custom_system_prompt: string | null
-  emotion_mapping: Record<string, string>
+  emotion_mapping: Record<string, string>; api_token: string | null
 }
 
 const router = useRouter()
@@ -22,7 +22,7 @@ onMounted(async () => {
       sandbox_path: '~/.companion/sandbox', llm_provider: 'siliconflow', asr_provider: 'local', tts_provider: 'local',
       system_mode: false, enable_accessibility: false, vad_threshold: 0.3,
       user_name: 'User', style_template: 'professional', custom_system_prompt: null,
-      emotion_mapping: {},
+      emotion_mapping: {}, api_token: null,
     }
   }
 })
@@ -143,6 +143,12 @@ async function save() {
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1.5">Sandbox Path</label>
             <input v-model="config.sandbox_path" class="block w-full rounded-lg border border-gray-200 px-3.5 py-2.5 text-sm font-mono shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">API Token (Xiaomi / Cloud)</label>
+            <input v-model="config.api_token" type="password" placeholder="Or set COMPANION_API_TOKEN env var"
+              class="block w-full rounded-lg border border-gray-200 px-3.5 py-2.5 text-sm font-mono shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors" />
+            <p class="text-xs text-gray-400 mt-1">Stored in ~/.companion/config.json. Never committed to git.</p>
           </div>
           <div class="flex items-center justify-between py-1">
             <div>

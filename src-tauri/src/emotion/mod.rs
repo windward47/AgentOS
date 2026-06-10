@@ -1,3 +1,6 @@
+//! Emotion recognition trait — reserved for Phase 3 affective computing.
+//! TODO(Sprint 3.1): implement XiaomiEmotion or local Whisper-emotion backend.
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

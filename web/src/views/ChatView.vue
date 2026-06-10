@@ -16,6 +16,14 @@ const ttsVoice = ref('茉莉')
 const ttsSpeed = ref(1.0)
 const voices = ['mimo_default', '冰糖', '茉莉', '苏打', '白桦', 'Mia', 'Chloe', 'Milo', 'Dean']
 
+// ── Toast notifications ──
+const toast = ref('')
+
+function showToast(msg: string) {
+  toast.value = msg
+  setTimeout(() => { if (toast.value === msg) toast.value = '' }, 4000)
+}
+
 // ── Interrupt sensitivity ──
 const interruptEnabled = ref(true)
 const interruptSensitivity = ref(0.3)
@@ -75,11 +83,11 @@ async function startRecording() {
           store.addMessage({ role: 'assistant', content: reply })
         } catch (err: any) { store.addMessage({ role: 'assistant', content: String(err) }) }
         finally { store.setSending(false) }
-      } catch (err: any) { console.error('ASR error:', err) }
+      } catch (err: any) { showToast('ASR: ' + String(err)); console.error('ASR error:', err) }
     }
     mediaRecorder.start()
     recording.value = true
-  } catch (err: any) { console.error('Mic error:', err) }
+  } catch (err: any) { showToast('Mic: ' + String(err)); console.error('Mic error:', err) }
 }
 
 function stopRecording() {
@@ -188,7 +196,8 @@ async function playTTS(text: string, msgIdx: number) {
   stopTTS()
   playingId.value = msgIdx
   try {
-    const pcm = await invoke<number[]>('synthesize_audio', { text: text.slice(0, 300), voice: ttsVoice.value })
+    const textForTTS = text.length > 300 ? text.slice(0, 300) + '…' : text
+    const pcm = await invoke<number[]>('synthesize_audio', { text: textForTTS, voice: ttsVoice.value })
     if (!pcm || pcm.length === 0) { playingId.value = null; return }
     if (!audioCtx) audioCtx = new AudioContext()
     const buf = audioCtx.createBuffer(1, pcm.length, 16000)
@@ -211,7 +220,7 @@ async function playTTS(text: string, msgIdx: number) {
       const rms = Math.sqrt(sum / (end - start))
       invoke('set_lip_level', { level: Math.min(rms * 3, 1.0) }).catch(() => {})
     }, 60)
-  } catch (err: any) { console.error('TTS error:', err); playingId.value = null }
+  } catch (err: any) { showToast('TTS: ' + String(err)); console.error('TTS error:', err); playingId.value = null }
 }
 
 function stopTTS() {
@@ -285,7 +294,7 @@ async function maybeInterrupt() {
               store.addMessage({ role: 'assistant', content: reply })
             } catch (err: any) { store.addMessage({ role: 'assistant', content: String(err) }) }
             finally { store.setSending(false) }
-          } catch (err: any) { console.error('ASR error:', err) }
+          } catch (err: any) { showToast('Interrupt ASR: ' + String(err)); console.error('ASR error:', err) }
           interruptRecording = false; interruptSpeechStart = 0; interruptSilenceStart = 0
         }
         interruptRecorder.start()
@@ -353,6 +362,10 @@ async function browseScreenshot() {
 
 <template>
   <div class="flex flex-col h-full min-h-0">
+    <!-- Toast notification -->
+    <div v-if="toast" class="absolute top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-red-500 text-white text-sm rounded-lg shadow-lg transition-all duration-300">
+      ⚠️ {{ toast }}
+    </div>
     <!-- Header -->
     <div class="flex items-center justify-between px-5 h-14 border-b border-gray-100 shrink-0">
       <div class="flex items-center gap-2">

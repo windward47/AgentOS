@@ -1,3 +1,7 @@
+//! LLM trait — reserved for direct LLM provider integration (fallback path).
+//! LLM trait — reserved for direct LLM provider integration (fallback path).
+//! TODO(Sprint 3.x): implement DirectLlm provider when omp is unavailable.
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

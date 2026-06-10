@@ -38,12 +38,11 @@ impl AuditEvent {
 
 fn is_high_risk(cmd: &str, _args: &str) -> bool {
     let cmd_lower = cmd.to_lowercase();
-    let risky = ["rm", "del", "rd", "format", "shutdown", "reboot", "poweroff"];
     let name = std::path::Path::new(&cmd_lower)
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or(cmd_lower);
-    risky.iter().any(|r| name == *r)
+    super::HIGH_RISK_CMDS.iter().any(|r| name == *r)
 }
 
 /// Thread-safe audit logger.
@@ -73,15 +72,22 @@ impl AuditLogger {
 
     fn append(&self, line: &str) {
         let mut guard = self.file.lock().unwrap();
-        if guard.is_none() {
-            match OpenOptions::new().create(true).append(true).open(&self.path) {
-                Ok(f) => *guard = Some(f),
-                Err(e) => { eprintln!("[AuditLogger] cannot open log: {e}"); return; }
+        // Try to open on every call — don't permanently cache failures
+        match OpenOptions::new().create(true).append(true).open(&self.path) {
+            Ok(mut f) => {
+                let _ = writeln!(f, "{line}");
+                let _ = f.flush();
+                *guard = Some(f);
             }
-        }
-        if let Some(ref mut f) = *guard {
-            writeln!(f, "{line}").ok();
-            f.flush().ok();
+            Err(e) => {
+                // Preserve previous handle for one-more-try semantics
+                if let Some(ref mut f) = *guard {
+                    let _ = writeln!(f, "{line}");
+                    let _ = f.flush();
+                } else {
+                    eprintln!("[AuditLogger] cannot open log: {e}");
+                }
+            }
         }
     }
 }

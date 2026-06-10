@@ -33,15 +33,25 @@ pub struct AppState {
     pub audit: AuditLogger,
 }
 
+/// Resolve the API token with priority: env var > config file > empty.
+fn resolve_api_token(config: &CompanionConfig) -> String {
+    if let Ok(tok) = std::env::var("COMPANION_API_TOKEN") {
+        if !tok.is_empty() {
+            return tok;
+        }
+    }
+    if let Some(ref tok) = config.api_token {
+        if !tok.is_empty() {
+            return tok.clone();
+        }
+    }
+    String::new()
+}
+
 fn resolve_omp_binary() -> String {
     #[cfg(target_os = "windows")]
     {
-        // On Windows, the npm global `omp` is a POSIX shell script (not executable).
-        // `omp.cmd` is the actual batch wrapper that Windows uses.
-        // `Command::new(\"omp\")` on Windows automatically tries .cmd/.exe/.bat,
-        // so the simplest fix is to leave it as bare `omp` without full path.
         let candidates = [
-            // npm global: %APPDATA%/npm/omp.cmd (Windows batch wrapper)
             {
                 let appdata = std::env::var("APPDATA").unwrap_or_default();
                 format!("{appdata}\\npm\\omp.cmd")
@@ -78,9 +88,7 @@ fn resolve_omp_binary() -> String {
 }
 
 impl Default for AppState {
-    fn default() -> Self {
-        Self::new()
-    }
+    fn default() -> Self { Self::new() }
 }
 
 impl AppState {
@@ -175,27 +183,33 @@ pub async fn clear_history(
 }
 
 /// Tauri command: transcribe raw PCM f32 mono audio to text using Xiaomi ASR.
-/// Audio should be 16kHz mono PCM f32 samples. Frontend handles microphone capture + VAD.
 #[tauri::command]
 pub async fn transcribe_audio(
+    state: tauri::State<'_, AppState>,
     audio: Vec<f32>,
 ) -> Result<String, String> {
-    let asr = crate::asr::xiaomi_asr::XiaomiAsr::new(
-        "REDACTED_TOKEN_PLACEHOLDER",
-    );
+    let token = {
+        let config = state.config.lock().await;
+        resolve_api_token(&config)
+    };
+    let asr = crate::asr::xiaomi_asr::XiaomiAsr::new(&token);
     asr.transcribe(&audio).await
         .map_err(|e| format!("ASR error: {e}"))
 }
 
 /// Tauri command: synthesize text to audio using Xiaomi TTS.
-/// Returns PCM f32 mono samples (16kHz).
 #[tauri::command]
 pub async fn synthesize_audio(
+    state: tauri::State<'_, AppState>,
     text: String,
     voice: Option<String>,
 ) -> Result<Vec<f32>, String> {
+    let token = {
+        let config = state.config.lock().await;
+        resolve_api_token(&config)
+    };
     let tts = crate::tts::xiaomi_tts::XiaomiTts::new(
-        "REDACTED_TOKEN_PLACEHOLDER",
+        &token,
         &voice.unwrap_or_else(|| "茉莉".into()),
     );
     tts.synthesize(&text).await
@@ -226,13 +240,12 @@ pub async fn update_config(
     if was_mode != config.system_mode {
         state.audit.log(AuditEvent::ModeSwitch { from: was_mode, to: config.system_mode });
     }
-    // Bridge: sync LLM provider → omp --model
     let model = provider_to_model(&config.llm_provider).to_string();
     state.agent.set_model(model);
     Ok(())
 }
 
-/// Tauri command: set the lip-sync level (0.0–1.0). Main window calls this during TTS playback.
+/// Tauri command: set the lip-sync level (0.0–1.0).
 #[tauri::command]
 pub async fn set_lip_level(
     state: tauri::State<'_, AppState>,
@@ -242,7 +255,7 @@ pub async fn set_lip_level(
     Ok(())
 }
 
-/// Tauri command: get the current lip-sync level. Avatar window polls this at ~30fps.
+/// Tauri command: get the current lip-sync level.
 #[tauri::command]
 pub async fn get_lip_level(
     state: tauri::State<'_, AppState>,
@@ -251,17 +264,30 @@ pub async fn get_lip_level(
 }
 
 /// Tauri command: take a screenshot of a given URL via Playwright.
-/// Returns a base64-encoded PNG image.
+/// Only allows http(s) URLs. Returns base64-encoded PNG.
 #[tauri::command]
 pub async fn browse_screenshot(
     url: String,
 ) -> Result<String, String> {
+    // Validate URL scheme
+    let lower = url.to_lowercase();
+    if !lower.starts_with("http://") && !lower.starts_with("https://") {
+        return Err("Only http:// and https:// URLs are allowed".into());
+    }
+
     let script = std::env::current_dir()
         .unwrap_or_default()
         .join("scripts")
         .join("browser-screenshot.mjs");
 
-    let tmp = std::env::temp_dir().join(format!("companion_browse_{}.png", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!(
+        "companion_browse_{}_{}.png",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0)
+    ));
 
     let output = std::process::Command::new("node")
         .arg(&script)

@@ -5,10 +5,7 @@ use std::sync::Arc;
 use crate::mcp::{McpError, McpTool};
 use crate::sandbox::Sandbox;
 
-/// Commands/phrases that require explicit confirmation (system mode or not).
-const HIGH_RISK_CMDS: &[&str] = &[
-    "rm", "del", "rd", "format", "shutdown", "reboot", "poweroff",
-];
+use crate::permissions::HIGH_RISK_CMDS;
 
 /// Path fragments that are high-risk.
 const HIGH_RISK_PATHS: &[&str] = &[
