@@ -52,17 +52,12 @@ pub fn run() {
             let main_win = app.get_webview_window("main").unwrap();
             main_win.set_title("Companion v0.1.0").ok();
 
-            // Position avatar window, redirect to Vite in dev
+            // Position avatar window (loads from built dist/)
             if let Some(avatar) = app.get_webview_window("avatar") {
                 let _ = avatar.set_position(tauri::PhysicalPosition::new(
                     main_win.outer_size().unwrap().width as i32 + 100,
                     100,
                 ));
-                #[cfg(debug_assertions)]
-                {
-                    let url = tauri::Url::parse("http://localhost:5173/avatar.html").unwrap();
-                    let _ = avatar.navigate(url);
-                }
             }
 
             log::info!("Companion v{} started", env!("CARGO_PKG_VERSION"));

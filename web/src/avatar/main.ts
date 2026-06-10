@@ -31,7 +31,7 @@ let lipSmooth = 0;
 const root = document.getElementById('root')!;
 
 function status(msg: string) {
-  root.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#ccc;font-size:12px;font-family:monospace;text-align:center;padding:20px;white-space:pre-wrap;">${msg}</div>`;
+  root.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#fff;font-size:12px;font-family:monospace;text-align:center;padding:20px;white-space:pre-wrap;">${msg}</div>`;
 }
 
 async function init() {
@@ -42,7 +42,7 @@ async function init() {
   try {
     app = new PIXI.Application({
       width: innerWidth, height: innerHeight,
-      backgroundAlpha: 0, antialias: true,
+      backgroundColor: 0x1a1a2e, antialias: true,
       resolution: devicePixelRatio || 1, autoDensity: true,
       view: document.createElement('canvas'),
     });
