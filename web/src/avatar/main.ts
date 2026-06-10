@@ -1,10 +1,29 @@
-// Avatar — CSS character with lip-sync + expressions
-let invokeFn: any = null, gcw: any = null;
+// Haru Live2D Avatar — Cubism 5 SDK · follows official demo pattern
+// Cuts out all the LApp* abstractions.  Direct init sequence:
+//   CubismFramework → CubismUserModel → loadModel → loadTextures →
+//   createRenderer + startUp + loadShaders → bindTextures → loop
+
+import { CubismUserModel } from '../live2d/model/cubismusermodel';
+import { CubismModel } from '../live2d/model/cubismmodel';
+import { CubismFramework, Option, LogLevel } from '../live2d/live2dcubismframework';
+import { CubismDefaultParameterId } from '../live2d/cubismdefaultparameterid';
+import { CubismModelSettingJson } from '../live2d/cubismmodelsettingjson';
+import { ICubismModelSetting } from '../live2d/icubismmodelsetting';
+import { CubismMotion } from '../live2d/motion/cubismmotion';
+import { CubismEyeBlink } from '../live2d/effect/cubismeyeblink';
+import { CubismBreath, BreathParameterData } from '../live2d/effect/cubismbreath';
+import { CubismMatrix44 } from '../live2d/math/cubismmatrix44';
+import { CubismIdHandle } from '../live2d/id/cubismid';
+import { CubismRenderer_WebGL } from '../live2d/rendering/cubismrenderer_webgl';
+import { CubismShaderManager_WebGL } from '../live2d/rendering/cubismshader_webgl';
+
+// Tauri
+let invokeFn: any = null, gcwFn: any = null;
 import('@tauri-apps/api/core').then(m => invokeFn = m.invoke).catch(() => {});
 import('@tauri-apps/api/window').then(m => {
-  gcw = m.getCurrentWindow;
+  gcwFn = m.getCurrentWindow;
   document.getElementById('drag-bar')?.addEventListener('mousedown', e => {
-    if (e.button === 0) gcw()?.startDragging();
+    if (e.button === 0) gcwFn()?.startDragging();
   });
 }).catch(() => {});
 document.addEventListener('contextmenu', e => {
@@ -14,45 +33,195 @@ document.addEventListener('contextmenu', e => {
   c.style.top = Math.min(e.clientY, innerHeight - 50) + 'px';
   c.style.display = 'block';
 });
-document.addEventListener('click', () => { document.getElementById('ctx-menu')!.style.display = 'none'; });
-(window as any).closeWindow = () => gcw?.()?.close();
+document.addEventListener('click', () => document.getElementById('ctx-menu')!.style.display = 'none');
+(window as any).closeWindow = () => gcwFn?.()?.close();
 
-// Expressions
-const expressions = [
-  { b: -3, mc: '#e0705c', bo: .3 },
-  { b: 4, mc: '#f0a0a0', bo: .6 },
-  { b: -8, mc: '#c06050', bo: .2 },
-  { b: 6, mc: '#ff8080', bo: 0 },
-  { b: 0, mc: '#e0705c', bo: .4 },
-];
-let exprIdx = 0;
-function cycleExpr() {
-  const e = expressions[exprIdx = (exprIdx + 1) % expressions.length];
-  const bl = document.getElementById('browL'), br = document.getElementById('browR');
-  const mouth = document.getElementById('mouth');
-  if (bl) bl.style.transform = `rotate(${e.b}deg)`;
-  if (br) br.style.transform = `rotate(${-e.b}deg)`;
-  if (mouth) mouth.style.background = e.mc;
-  document.querySelectorAll<HTMLElement>('.blush').forEach(b => { b.style.opacity = String(e.bo); });
+// ── State ──
+const root = document.getElementById('root')!;
+const BASE = '/live2d/models/haru/';
+let canvas: HTMLCanvasElement, gl: WebGLRenderingContext;
+let model: CubismUserModel, cm: CubismModel, renderer: CubismRenderer_WebGL;
+let eyeBlink: CubismEyeBlink, breath: CubismBreath;
+let idMouth: CubismIdHandle;
+let lipSmooth = 0, lastTime = 0;
+const expressionNames: string[] = [];
+
+function status(msg: string) {
+  root.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#ccc;font-size:12px;font-family:monospace;text-align:center;padding:20px;white-space:pre-wrap;">${msg}</div>`;
 }
-setInterval(cycleExpr, 5000 + Math.random() * 7000);
 
-// Lip-sync
-let lipSmooth = 0;
-function lipTick() {
-  if (invokeFn) {
+async function loadTexture(path: string): Promise<WebGLTexture> {
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const i = new Image(); i.crossOrigin = 'anonymous';
+    i.onload = () => resolve(i); i.onerror = () => reject(new Error(path));
+    i.src = BASE + path;
+  });
+  const tex = gl.createTexture()!;
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.generateMipmap(gl.TEXTURE_2D);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  return tex;
+}
+
+async function init() {
+  if (!(window as any).Live2DCubismCore) { status('CubismCore not loaded'); return; }
+  status('Cubism 5…');
+
+  // 1. Framework
+  CubismFramework.startUp(new Option());
+  CubismFramework.initialize();
+
+  // 2. Canvas + WebGL
+  canvas = document.createElement('canvas'); canvas.width = innerWidth; canvas.height = innerHeight;
+  canvas.style.display = 'block'; root.innerHTML = ''; root.appendChild(canvas);
+  gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true })!
+    || canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true })!;
+  if (!gl) { status('WebGL not available'); return; }
+  console.log('[Haru] GL:', gl instanceof WebGL2RenderingContext ? 'WebGL2' : 'WebGL1');
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+
+  // 3. Model setting
+  status('Loading model3.json…');
+  const sjson = await (await fetch(BASE + 'haru.model3.json')).arrayBuffer();
+  const setting = new CubismModelSettingJson(sjson, sjson.byteLength) as ICubismModelSetting;
+
+  // 4. CubismUserModel + moc3
+  status('Loading .moc3…');
+  model = new CubismUserModel();
+  const mocBuf = await (await fetch(BASE + 'haru.moc3')).arrayBuffer();
+  model.loadModel(mocBuf);  // calls CubismMoc.create + .createModel() internally
+  cm = model.getModel()!;
+  if (!cm) { status('Model creation failed'); return; }
+
+  // 5. Optional: physics + pose
+  try { model.loadPhysics(await (await fetch(BASE + 'haru.physics3.json')).arrayBuffer(), 0); } catch {}
+  try { model.loadPose(await (await fetch(BASE + 'haru.pose3.json')).arrayBuffer(), 0); } catch {}
+
+  // 6. Eye blink + breath
+  eyeBlink = CubismEyeBlink.create(setting);
+  breath = CubismBreath.create();
+  const idMgr = CubismFramework.getIdManager();
+  breath.setParameters([
+    new BreathParameterData(idMgr.getId(CubismDefaultParameterId.ParamAngleX), 0, 15, 6.5345, 0.5),
+    new BreathParameterData(idMgr.getId(CubismDefaultParameterId.ParamAngleY), 0, 8, 3.5345, 0.5),
+    new BreathParameterData(idMgr.getId(CubismDefaultParameterId.ParamAngleZ), 0, 10, 5.5345, 0.5),
+    new BreathParameterData(idMgr.getId(CubismDefaultParameterId.ParamBodyAngleX), 0, 4, 15.5345, 0.5),
+    new BreathParameterData(idMgr.getId(CubismDefaultParameterId.ParamBreath), 0.5, 0.5, 3.2345, 1),
+  ]);
+  idMouth = idMgr.getId(CubismDefaultParameterId.ParamMouthOpenY);
+
+  // 7. Renderer — create + startUp + loadShaders
+  status('Loading shaders…');
+  model.createRenderer(canvas.width, canvas.height);
+  renderer = model.getRenderer();
+  renderer.startUp(gl);
+  renderer.setIsPremultipliedAlpha(true);
+
+  // Two-pass shader init (see previous commit for rationale)
+  const shader = CubismShaderManager_WebGL.getInstance().getShader(gl);
+  shader.setShaderPath('/live2d/');
+  shader.generateShaders();
+  for (let i = 0; i < 60; i++) {
+    if ((shader as any)._fragShaderSrcPremultipliedAlpha) break;
+    await new Promise(r => setTimeout(r, 250));
+  }
+  (shader as any)._shaderSets = [];
+  shader.generateShaders();
+  (shader as any)._isShaderLoaded = true;
+  (shader as any)._isShaderLoading = false;
+
+  // 8.  ★★★ LOAD + BIND TEXTURES (the missing piece) ★★★
+  status('Loading textures…');
+  const texCount = setting.getTextureCount();
+  if (texCount > 0) {
+    for (let i = 0; i < texCount; i++) {
+      const path = setting.getTextureFileName(i);
+      if (!path) continue;
+      const tex = await loadTexture(path);
+      renderer.bindTexture(i, tex);  // ← THIS is what makes the model visible!
+      console.log('[Haru] Texture', i, path);
+    }
+  }
+
+  // 9. Idle motion
+  try {
+    const mm = (model as any)._motionManager;
+    const buf = await (await fetch(BASE + 'motion/haru_g_idle.motion3.json')).arrayBuffer();
+    const m = CubismMotion.create(buf, buf.byteLength);
+    if (m) { m.setEffectIds([], []); mm.startMotionPriority(m, false, 1); }
+  } catch {}
+
+  // 10. Expression list
+  try {
+    const chk = await fetch(BASE + 'motion/haru_g_m01.motion3.json');
+    if (chk.ok) for (let i = 1; i <= 26; i++) expressionNames.push('haru_g_m' + String(i).padStart(2, '0') + '.motion3.json');
+  } catch {}
+  setTimeout(cycleExpr, 5000);
+
+  status('');
+  console.log('[Haru] Ready. Drawables:', cm.getDrawableCount(), 'Textures:', texCount);
+  lastTime = performance.now();
+  requestAnimationFrame(loop);
+}
+
+async function cycleExpr() {
+  if (!cm || expressionNames.length === 0) { setTimeout(cycleExpr, 5000); return; }
+  const name = expressionNames[Math.floor(Math.random() * expressionNames.length)];
+  try {
+    const buf = await (await fetch(BASE + 'motion/' + name)).arrayBuffer();
+    const m = CubismMotion.create(buf, buf.byteLength);
+    if (m) { m.setEffectIds([], []); (model as any)._motionManager?.startMotionPriority(m, false, 3); }
+  } catch {}
+  setTimeout(cycleExpr, 5000 + Math.random() * 7000);
+}
+
+function loop() {
+  const now = performance.now();
+  const dt = Math.min((now - lastTime) / 1000, 0.1);
+  lastTime = now;
+  if (!cm || !renderer) { requestAnimationFrame(loop); return; }
+
+  const mm = (model as any)._motionManager;
+  try { mm?.updateMotion?.(cm, dt); (model as any)._expressionManager?.updateMotion?.(cm, dt); } catch {}
+  eyeBlink?.updateParameters(cm, dt);
+  breath?.updateParameters(cm, dt);
+  try { (model as any)._physics?.update?.(cm, dt); (model as any)._pose?.update?.(cm, dt); } catch {}
+
+  const mi = cm.getParameterIndex(idMouth);
+  if (mi >= 0) cm.addParameterValueById(mi, lipSmooth);
+
+  cm.update(); cm.loadParameters();
+
+  // Clear + set state + draw (matches official demo LAppView.render + LAppSubdelegate.update)
+  gl.clearColor(0.102, 0.102, 0.180, 1.0);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
+  gl.clearDepth(1.0);
+  renderer.setRenderState(null, [0, 0, canvas.width, canvas.height]);
+
+  const matrix = new CubismMatrix44();
+  matrix.scale(0.55, 0.55);
+  matrix.translateRelative(canvas.width * 0.5 / 0.55, canvas.height * 0.5 / 0.55);
+  renderer.setMvpMatrix(matrix);
+  renderer.drawModel();
+
+  if (canvas.width !== innerWidth || canvas.height !== innerHeight) {
+    canvas.width = innerWidth; canvas.height = innerHeight;
+  }
+  requestAnimationFrame(loop);
+}
+
+(function lipTick() {
+  if (invokeFn && cm) {
     invokeFn('get_lip_level').then((l: any) => {
-      const t = Math.min(+l * 1.6, 1);
-      lipSmooth += (t - lipSmooth) * (t > lipSmooth ? .35 : .15);
-      const sy = 0.3 + lipSmooth * 2.8;
-      const mouth = document.getElementById('mouth');
-      const head = document.getElementById('head');
-      const bangs = document.getElementById('bangs');
-      if (mouth) { mouth.style.transform = `scaleY(${Math.min(sy, 3.5)})`; mouth.style.height = (8 + lipSmooth * 10) + 'px'; }
-      if (head) head.style.transform = `scaleY(${1 - lipSmooth * 0.02})`;
-      if (bangs) bangs.style.transform = `translateX(-50%) scaleY(${1 + lipSmooth * 0.03})`;
+      lipSmooth += (Math.min(+l * 1.8, 1) - lipSmooth) * 0.25;
     }).catch(() => {});
   }
   requestAnimationFrame(lipTick);
-}
-lipTick();
+})();
+
+init().catch(e => { status('Error: ' + String(e)); console.error(e); });
