@@ -120,6 +120,8 @@ AgentOS/
 | `update_config` | `config: CompanionConfig` | `()` | 更新配置 |
 | `set_lip_level` | `level: number` (0-1) | `()` | TTS 嘴型同步 |
 | `get_lip_level` | 无 | `number` | 读取嘴型值 |
+| `browse_screenshot` | `url: string` | `string` (base64 PNG) | 浏览器截图 |
+| `get_audit_log` | 无 | `string` | 读取操作日志 |
 
 ## 技术栈
 

@@ -180,8 +180,8 @@ Live2D 不应该和聊天 UI 挤在同一个 Vue 组件里。正确做法：
 | 1.6 | ⚠️ | Settings UI done; model switch deferred to Phase 2 |
 | **2.1** | **✅** | **Interrupt: bg VAD → stop TTS → ASR → auto-send** |
 | 2.2 | 📋 | Local TTS (ChatTTS) |
-| 2.3 | 📋 | Browser control (Playwright) |
-| 2.4 | 📋 | System mode + security log |
+| 2.3 | ✅ | Browser screenshot (Playwright headless Chrome) |
+| 2.4 | ✅ | Audit logging + system mode switch |
 
 ## Notes
 
