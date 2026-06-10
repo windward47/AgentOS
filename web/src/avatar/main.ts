@@ -193,26 +193,17 @@ function loop() {
   cm.update();
   cm.loadParameters();
 
-  gl.clearColor(0.102, 0.102, 0.180, 1.0); // #1a1a2e, opaque
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  gl.disable(gl.BLEND); // force opaque for diagnostic
+  gl.clearColor(0.102, 0.102, 0.180, 1.0);
+  gl.clear(gl.COLOR_BUFFER_BIT);
 
-  const fbo = gl.getParameter(gl.FRAMEBUFFER_BINDING);
-  renderer.setRenderState(fbo, [0, 0, canvas.width, canvas.height]);
-
-  // Simple scale matrix for testing
   const matrix = new CubismMatrix44();
-  matrix.scale(0.35, 0.35);
-  matrix.translateRelative(canvas.width * 0.5 / 0.35, canvas.height * 0.45 / 0.35);
+  matrix.scale(0.55, 0.55);
+  matrix.translateRelative(canvas.width * 0.5 / 0.55, canvas.height * 0.5 / 0.55);
   renderer.setMvpMatrix(matrix);
-  renderer.drawModel();
 
-  // Restore blend for next frame
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  try { renderer.drawModel(); } catch(e) { console.error('[Haru] draw error:', e); }
 
-  // Log once
-  if (!(window as any).__dd) { (window as any).__dd=1; console.log('[Haru] drew at', matrix.getArray()); }
+  if (!(window as any).__dd) { (window as any).__dd=1; console.log('[Haru] drew at', canvas.width, 'x', canvas.height, 'scale 0.55'); }
 
   if (canvas.width !== innerWidth || canvas.height !== innerHeight) {
     canvas.width = innerWidth; canvas.height = innerHeight;
