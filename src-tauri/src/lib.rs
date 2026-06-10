@@ -51,6 +51,17 @@ pub fn run() {
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
             window.set_title("Companion v0.1.0").ok();
+
+            // Position avatar window to the right of the screen
+            if let Some(avatar) = app.get_webview_window("avatar") {
+                let _ = avatar.set_position(tauri::PhysicalPosition::new(
+                    window.outer_size().unwrap().width as i32 + 100,
+                    100,
+                ));
+                let _ = avatar.show();
+                log::info!("Avatar window positioned and shown");
+            }
+
             log::info!("Companion v{} started", env!("CARGO_PKG_VERSION"));
             Ok(())
         })

@@ -1,14 +1,13 @@
 // Live2D Avatar Renderer — Tauri avatar window entry
 // PixiJS v7 + pixi-live2d-display + Cubism 4 + Haru model
-// Idle animation · expression cycling · lip-sync · eye blink
 
 import * as PIXI from 'pixi.js';
 import { Live2DModel } from 'pixi-live2d-display';
 import 'pixi-live2d-display/cubism4';
 
 // ── Lazy Tauri API ──
-let invokeFn: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null = null;
-let getCurrentWindowFn: (() => any) | null = null;
+let invokeFn: any = null;
+let getCurrentWindowFn: any = null;
 
 async function loadTauri() {
     try {
@@ -16,7 +15,10 @@ async function loadTauri() {
         invokeFn = api.invoke;
         const win = await import('@tauri-apps/api/window');
         getCurrentWindowFn = win.getCurrentWindow;
-    } catch { /* browser */ }
+        console.log('[Avatar] Tauri API loaded');
+    } catch (e) {
+        console.warn('[Avatar] Tauri not available, running in browser');
+    }
 }
 
 // ── State ──
@@ -26,6 +28,7 @@ const expressionNames: string[] = [];
 let lipSmooth = 0;
 let blinkTimer = 0;
 let blinkValue = 0;
+let loaded = false;
 
 // ── Eye blink ──
 function eyeBlink() {
@@ -44,9 +47,9 @@ function eyeBlink() {
 
 // ── Lip-sync ──
 function lipTick() {
-    if (invokeFn) {
-        invokeFn('get_lip_level').then((level) => {
-            const target = Math.min((level as number) * 1.8, 1.0);
+    if (invokeFn && model) {
+        invokeFn('get_lip_level').then((level: any) => {
+            const target = Math.min(Number(level) * 1.8, 1.0);
             const speed = target > lipSmooth ? 0.3 : 0.12;
             lipSmooth += (target - lipSmooth) * speed;
             const core = (model as any)?.internalModel?.coreModel;
@@ -107,23 +110,64 @@ function setupContextMenu() {
     (window as any).closeWindow = () => getCurrentWindowFn?.()?.close();
 }
 
+// ── Status display (debug) ──
+function showStatus(msg: string) {
+    const root = document.getElementById('root');
+    if (root && !loaded) {
+        root.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#888;font-size:12px;font-family:monospace;text-align:center;padding:20px;">${msg}</div>`;
+    }
+}
+
 // ── Init ──
 async function init() {
-    app = new PIXI.Application({
-        width: innerWidth, height: innerHeight,
-        backgroundAlpha: 0, antialias: true,
-        resolution: devicePixelRatio || 1, autoDensity: true,
-    });
-    document.getElementById('root')!.appendChild(app.view as HTMLCanvasElement);
-
-    Live2DModel.registerTicker(PIXI.Ticker);
+    showStatus('Creating PixiJS renderer...');
 
     try {
-        model = await Live2DModel.from('/live2d/models/haru/haru.model3.json', { autoUpdate: true, autoHitTest: false });
+        app = new PIXI.Application({
+            width: innerWidth, height: innerHeight,
+            backgroundAlpha: 0, antialias: true,
+            resolution: devicePixelRatio || 1, autoDensity: true,
+        });
+    } catch (e: any) {
+        showStatus('PixiJS init failed: ' + String(e));
+        console.error('[Avatar] PixiJS init failed:', e);
+        return;
+    }
+
+    const canvas = app.view as HTMLCanvasElement;
+    canvas.style.display = 'block';
+    document.getElementById('root')!.appendChild(canvas);
+    console.log('[Avatar] PixiJS initialized, canvas:', canvas.width, 'x', canvas.height);
+
+    // Register ticker BEFORE loading model
+    Live2DModel.registerTicker(PIXI.Ticker);
+    console.log('[Avatar] Ticker registered');
+
+    showStatus('Loading Live2D model...');
+
+    try {
+        const modelUrl = '/live2d/models/haru/haru.model3.json';
+        console.log('[Avatar] Loading model from:', modelUrl);
+
+        model = await Live2DModel.from(modelUrl, {
+            autoUpdate: true,
+            autoHitTest: false,
+        });
+
+        console.log('[Avatar] Model loaded!', model);
+        loaded = true;
+
+        // Remove status text
+        const root = document.getElementById('root')!;
+        root.innerHTML = '';
+        root.appendChild(canvas);
+
         model.x = app.view.width / 2;
         model.y = app.view.height * 0.58;
         model.scale.set(0.18);
         app.stage.addChild(model as any);
+
+        console.log('[Avatar] Model added to stage at', model.x, model.y);
 
         (window as any).__live2d = {
             setParam: (name: string, value: number) => {
@@ -134,15 +178,20 @@ async function init() {
         // Discover expression motions
         try {
             const chk = await fetch('/live2d/models/haru/motion/haru_g_m01.motion3.json');
-            if (chk.ok) for (let i = 1; i <= 26; i++) expressionNames.push(`haru_g_m${String(i).padStart(2, '0')}.motion3.json`);
+            if (chk.ok) {
+                for (let i = 1; i <= 26; i++) {
+                    expressionNames.push(`haru_g_m${String(i).padStart(2, '0')}.motion3.json`);
+                }
+                console.log('[Avatar] Found expressions:', expressionNames.length);
+            }
         } catch {}
 
         playIdle();
         setInterval(playIdle, 25000);
         setTimeout(cycleExpression, 5000);
     } catch (err) {
-        console.error('Live2D load failed:', err);
-        document.getElementById('root')!.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#aaa;font-size:24px;">🎭</div>';
+        console.error('[Avatar] Live2D load failed:', err);
+        showStatus('Live2D load failed:\n' + String(err));
         return;
     }
 
