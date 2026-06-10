@@ -44,6 +44,7 @@ pub fn run() {
             state::update_config,
             state::set_lip_level,
             state::get_lip_level,
+            state::browse_screenshot,
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();

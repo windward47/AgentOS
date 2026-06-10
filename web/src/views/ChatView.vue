@@ -332,6 +332,23 @@ async function blobToPCM(blob: Blob): Promise<Float32Array> {
   const audioBuf = await ctx.decodeAudioData(await blob.arrayBuffer())
   return audioBuf.getChannelData(0)
 }
+// ── Browser ──
+const browseUrl = ref('')
+const browseResult = ref('')
+const browsing = ref(false)
+
+async function browseScreenshot() {
+  const url = browseUrl.value.trim()
+  if (!url || browsing.value) return
+  const target = url.startsWith('http') ? url : `https://${url}`
+  browsing.value = true; browseResult.value = ''
+  try {
+    const b64 = await invoke<string>('browse_screenshot', { url: target })
+    browseResult.value = b64
+  } catch (err: any) {
+    store.addMessage({ role: 'assistant', content: '🌐 ' + String(err) })
+  } finally { browsing.value = false }
+}
 </script>
 
 <template>
@@ -370,7 +387,7 @@ async function blobToPCM(blob: Blob): Promise<Float32Array> {
     <!-- Messages -->
     <div ref="list" class="flex-1 overflow-y-auto px-5">
       <div class="max-w-[720px] mx-auto py-6 space-y-6">
-        <div v-if="messages.length === 0" class="flex flex-col items-center justify-center py-20 text-gray-400">
+        <div v-if="messages.length === 0 && !browseResult" class="flex flex-col items-center justify-center py-20 text-gray-400">
           <div class="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-4 text-2xl">🤖</div>
           <p class="text-base font-medium text-gray-500 mb-1">Companion</p>
           <p class="text-sm text-gray-400">Type or press {{ hotkey }} to speak</p>
@@ -402,6 +419,22 @@ async function blobToPCM(blob: Blob): Promise<Float32Array> {
     <!-- Bottom bar -->
     <div class="border-t border-gray-100 px-4 py-3 shrink-0">
       <div class="max-w-[720px] mx-auto space-y-2">
+        <!-- Browser bar -->
+        <div class="flex items-center gap-2">
+          <input v-model="browseUrl" type="text" placeholder="https://example.com"
+            class="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-blue-300 transition-colors"
+            @keydown.enter="browseScreenshot" />
+          <button @click="browseScreenshot" :disabled="browsing"
+            class="shrink-0 text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 disabled:opacity-30 transition-colors">
+            {{ browsing ? '...' : '🌐 Screenshot' }}
+          </button>
+        </div>
+        <!-- Screenshot result -->
+        <div v-if="browseResult" class="relative">
+          <button @click="browseResult = ''" class="absolute top-1 right-1 text-xs bg-white/80 rounded px-1.5 py-0.5 z-10">✕</button>
+          <img :src="browseResult" class="w-full rounded-lg border border-gray-200" />
+        </div>
+        <!-- Controls -->
         <div class="flex items-center gap-3 flex-wrap">
           <button @click="interruptEnabled = !interruptEnabled"
             :class="['text-[11px] px-2 py-0.5 rounded-full border transition-colors', interruptEnabled ? 'bg-purple-50 border-purple-200 text-purple-600' : 'text-gray-400 border-gray-200 hover:border-gray-300']">

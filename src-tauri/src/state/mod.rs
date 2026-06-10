@@ -226,3 +226,36 @@ pub async fn get_lip_level(
 ) -> Result<f32, String> {
     Ok(*state.lip_level.lock().unwrap())
 }
+
+/// Tauri command: take a screenshot of a given URL via Playwright.
+/// Returns a base64-encoded PNG image.
+#[tauri::command]
+pub async fn browse_screenshot(
+    url: String,
+) -> Result<String, String> {
+    let script = std::env::current_dir()
+        .unwrap_or_default()
+        .join("scripts")
+        .join("browser-screenshot.mjs");
+
+    let tmp = std::env::temp_dir().join(format!("companion_browse_{}.png", std::process::id()));
+
+    let output = std::process::Command::new("node")
+        .arg(&script)
+        .arg(&url)
+        .arg(&tmp)
+        .arg("15000")
+        .output()
+        .map_err(|e| format!("Browser script failed: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Browser failed: {stderr}"));
+    }
+
+    let bytes = std::fs::read(&tmp).map_err(|e| format!("Read screenshot: {e}"))?;
+    std::fs::remove_file(&tmp).ok();
+
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    Ok(format!("data:image/png;base64,{}", STANDARD.encode(&bytes)))
+}

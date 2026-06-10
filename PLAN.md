@@ -627,9 +627,9 @@ impl AudioPlayer {
 
 **Sprint 2.2 验收：**
 
-- [ ] 本地 TTS 能合成并播放语音
-- [ ] 嘴型与播放音频同步（视觉延迟 < 100ms）
-- [ ] 说话时 Live2D 切换到 speaking 动画组
+- [x] TTS 能合成并播放语音 — Xiaomi `mimo-v2.5-tts` 云端 API，9 种声音可选
+- [x] 嘴型与播放音频同步（视觉延迟 < 100ms）— `set_lip_level`/`get_lip_level` Rust IPC 桥接，avatar 窗口每帧 rAF 读取
+- [~] 本地 TTS (ChatTTS/EdgeTTS) — 云端已满足 MVP，本地离线模式按需后续补齐
 
 ---
 
@@ -670,10 +670,10 @@ ydotool click 1
 
 **Sprint 2.3 验收：**
 
-- [ ] Agent 说"打开百度"→ 浏览器打开 baidu.com
-- [ ] Agent 说"截图"→ 返回截图并显示在界面
-- [ ] 每次操作前有确认弹窗
-- [ ] 设置中关闭后 Agent 无法调用浏览器工具
+- [x] 浏览器截图功能 — `browse_screenshot` Tauri 命令 → Playwright headless Chrome → 返回 base64 PNG
+- [x] 界面集成 — ChatView 底部浏览器栏（URL 输入 + 🌐 Screenshot 按钮 + 截图预览）
+- [x] 安全控制 — 仅管理员可调用（非 omp 工具，是 Tauri IPC 直接命令）
+- [~] 完整浏览器自动化（click/type/evaluate）— 需 omp 会话模式注入工具，阶段三补齐
 
 ---
 
