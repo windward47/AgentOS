@@ -8,7 +8,7 @@ interface Config {
   system_mode: boolean; enable_accessibility: boolean; vad_threshold: number
   user_name: string; style_template: string; custom_system_prompt: string | null
   emotion_mapping: Record<string, string>; api_token: string | null
-  voice_mode: string
+  voice_mode: string; tts_voice: string
 }
 
 const router = useRouter()
@@ -24,7 +24,7 @@ onMounted(async () => {
       system_mode: false, enable_accessibility: false, vad_threshold: 0.3,
       user_name: 'User', style_template: 'professional', custom_system_prompt: null,
       emotion_mapping: {}, api_token: null,
-      voice_mode: 'ptt',
+      voice_mode: 'ptt', tts_voice: '茉莉',
     }
   }
 })
@@ -138,6 +138,20 @@ async function save() {
               <button type="button" @click="config.voice_mode = 'ptt'"
                 :class="['px-3 py-1.5 font-medium transition-colors', config.voice_mode === 'ptt' ? 'bg-blue-500 text-white' : 'text-gray-500 hover:text-gray-700']">PTT</button>
             </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">TTS Voice</label>
+            <select v-model="config.tts_voice" class="block w-full rounded-lg border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors">
+              <option value="mimo_default">mimo_default</option>
+              <option value="茉莉">茉莉</option>
+              <option value="冰糖">冰糖</option>
+              <option value="苏打">苏打</option>
+              <option value="白桦">白桦</option>
+              <option value="Mia">Mia</option>
+              <option value="Chloe">Chloe</option>
+              <option value="Milo">Milo</option>
+              <option value="Dean">Dean</option>
+            </select>
           </div>
           <label class="block text-sm font-medium text-gray-700 mb-2">
             VAD Threshold — <span class="text-gray-500 font-normal">{{ config.vad_threshold.toFixed(2) }}</span>

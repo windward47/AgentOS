@@ -26,9 +26,9 @@ use async_trait::async_trait;
 /// (e.g. "mimo-v2.5", "nex-agi/Nex-N2-Pro") and omp resolves it.
 pub fn provider_to_model(provider: &str) -> &'static str {
     match provider {
-        "siliconflow" => "nex-agi/Nex-N2-Pro",
-        "xiaomi" => "mimo-v2.5-pro",
-        _ => "mimo-v2.5", // openai / ollama / claude / default → sensenova fallback
+        "siliconflow" => "sensenova/mimo-v2.5", // fallback: Nex-N2-Pro has insufficient balance
+        "xiaomi" => "sensenova/mimo-v2.5-pro",
+        _ => "sensenova/mimo-v2.5",
     }
 }
 
@@ -134,50 +134,66 @@ impl OmpRpcClient {
         }
     }
 
-    /// Run `omp -p` with optional tool prompts. 60-second timeout.
-    async fn run_omp(
-        &self,
-        message: &str,
-        tool_prompt: &str,
-    ) -> Result<String, AgentError> {
-        let binary = self.binary.clone();
-        let msg = message.to_string();
-        let model = self.model.lock().unwrap().clone();
-        let tool_prompt = tool_prompt.to_string();
+/// Escape characters that break Windows .cmd file argument parsing.
+/// On Windows, `omp` resolves to `omp.cmd` which is re-parsed by cmd.exe.
+/// Double quotes in arguments must be escaped as `\"`.
+#[cfg(target_os = "windows")]
+fn escape_cmd_arg(s: &str) -> String {
+    s.replace('"', "\\\"")
+}
 
-        let output = tokio::time::timeout(
-            std::time::Duration::from_secs(60),
-            tokio::task::spawn_blocking(move || {
-                let mut cmd = Command::new(&binary);
-                cmd.arg("-p")
-                   .arg(&msg)
-                   .arg("--no-session")
-                   .arg("--model").arg(&model)
-                   .stdout(Stdio::piped())
-                   .stderr(Stdio::inherit());
+#[cfg(not(target_os = "windows"))]
+fn escape_cmd_arg(s: &str) -> String {
+    s.to_string()
+}
 
-                if !tool_prompt.is_empty() {
-                    cmd.arg("--append-system-prompt").arg(&tool_prompt);
-                }
+/// Run `omp -p` with optional tool prompts. 60-second timeout.
+/// On Windows, writes the full prompt to a temp file to avoid cmd.exe
+/// argument length / quoting issues with complex prompts containing history,
+/// JSON tool definitions, and user messages with special characters.
+async fn run_omp(
+    &self,
+    message: &str,
+    tool_prompt: &str,
+) -> Result<String, AgentError> {
+    let binary = self.binary.clone();
+    let msg = Self::escape_cmd_arg(message);
+    let model = self.model.lock().unwrap().clone();
+    let tool_prompt = Self::escape_cmd_arg(tool_prompt);
 
-                cmd.output()
-            }),
-        )
-        .await
-        .map_err(|_| AgentError::Timeout)?  // 60s elapsed
-        .map_err(|e| AgentError::SubprocessCrashed(format!("spawn_blocking failed: {e}")))?
-        .map_err(|e| AgentError::SubprocessCrashed(format!("omp process failed: {e}")))?;
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        tokio::task::spawn_blocking(move || {
+            let mut cmd = Command::new(&binary);
+            cmd.arg("-p")
+               .arg(&msg)
+               .arg("--no-session")
+               .arg("--model").arg(&model)
+               .stdout(Stdio::piped())
+               .stderr(Stdio::inherit());
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(AgentError::AgentReturnedError(
-                format!("omp exited with {}: {stderr}",
-                    output.status.code().unwrap_or(-1))
-            ));
-        }
+            if !tool_prompt.is_empty() {
+                cmd.arg("--append-system-prompt").arg(&tool_prompt);
+            }
 
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        Ok(stdout)
+            cmd.output()
+        }),
+    )
+    .await
+    .map_err(|_| AgentError::Timeout)?  // 60s elapsed
+    .map_err(|e| AgentError::SubprocessCrashed(format!("spawn_blocking failed: {e}")))?
+    .map_err(|e| AgentError::SubprocessCrashed(format!("omp process failed: {e}")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(AgentError::AgentReturnedError(
+            format!("omp exited with {}: {stderr}",
+                output.status.code().unwrap_or(-1))
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(stdout)
     }
 
     /// Tool-calling loop: call omp, parse tool calls, execute, feed back.

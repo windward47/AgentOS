@@ -161,9 +161,10 @@ async function startBackgroundVAD() {
 
 onMounted(() => {
   startBackgroundVAD()
-  // Load voice mode from config
-  invoke<{ voice_mode: string }>('get_config').then(c => {
+  // Load voice preferences from config
+  invoke<{ voice_mode: string; tts_voice: string }>('get_config').then(c => {
     if (c.voice_mode === 'auto' || c.voice_mode === 'ptt') voiceMode.value = c.voice_mode
+    if (c.tts_voice) ttsVoice.value = c.tts_voice
   }).catch(() => {})
 })
 
@@ -374,6 +375,15 @@ watch(() => messages.length, async (len) => {
 onBeforeUnmount(() => {
   clearInterval(interruptTimer)
   ;(interruptRecorder as any)?.stop()
+})
+
+// Persist TTS voice changes to config
+watch(ttsVoice, async (val) => {
+  try {
+    const config = await invoke<any>('get_config')
+    config.tts_voice = val
+    await invoke('update_config', { config })
+  } catch {}
 })
 
 async function blobToPCM(blob: Blob): Promise<Float32Array> {

@@ -39,6 +39,10 @@ pub struct CompanionConfig {
     #[serde(default = "default_voice_mode")]
     pub voice_mode: String,
 
+    /// Default TTS voice name (e.g. "茉莉", "冰糖", "mimo_default")
+    #[serde(default = "default_tts_voice")]
+    pub tts_voice: String,
+
     /// User's display name
     #[serde(default = "default_user_name")]
     pub user_name: String,
@@ -71,6 +75,7 @@ fn default_asr() -> String { "local".into() }
 fn default_tts() -> String { "local".into() }
 fn default_vad_threshold() -> f32 { 0.3 }
 fn default_voice_mode() -> String { "ptt".into() }
+fn default_tts_voice() -> String { "茉莉".into() }
 fn default_user_name() -> String { "User".into() }
 fn default_style() -> String { "professional".into() }
 
@@ -85,6 +90,7 @@ impl Default for CompanionConfig {
             enable_accessibility: false,
             vad_threshold: default_vad_threshold(),
             voice_mode: default_voice_mode(),
+            tts_voice: default_tts_voice(),
             user_name: default_user_name(),
             style_template: default_style(),
             custom_system_prompt: None,
