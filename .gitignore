@@ -66,3 +66,9 @@ web/test-results/
 tmp/
 nul
 web/.vite/
+
+# User data (generated at runtime — never commit)
+.companion/
+*.db
+*.db-shm
+*.db-wal
