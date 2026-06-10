@@ -61,7 +61,7 @@ pub fn run() {
                 ));
                 #[cfg(debug_assertions)]
                 {
-                    let _ = avatar.eval("location.replace('http://localhost:5173/avatar.html')");
+                    let _ = avatar.eval("setTimeout(function(){location.replace('http://localhost:5173/avatar.html')}, 1000)");
                 }
             }
 
