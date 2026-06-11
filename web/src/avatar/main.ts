@@ -226,12 +226,16 @@ function loop() {
   cm.update();
   cm.loadParameters();
 
-  // Clear + draw — matches LAppSubdelegate.update()
+  // Clear + draw — EXACTLY matches LAppModel.doDraw() + LAppSubdelegate.update()
   gl.clearColor(0.102, 0.102, 0.180, 1.0);
-  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   gl.enable(gl.DEPTH_TEST);
   gl.depthFunc(gl.LEQUAL);
   gl.clearDepth(1.0);
+
+  // ★ SET RENDER STATE — this sets _modelRenderTargetWidth/Height used by clipping FBOs
+  const viewport = [0, 0, canvas.width, canvas.height];
+  renderer.setRenderState(null, viewport);
 
   // Projection — matches LAppLive2DManager.onUpdate()
   const projection = new CubismMatrix44();
@@ -244,9 +248,13 @@ function loop() {
   }
   projection.multiplyByMatrix(modelMatrix);
 
+  // ★ Must re-bind default framebuffer — CubismRenderer's drawModel internally
+  // binds its own FBOs for offscreen masking; screen draw needs gl.FRAMEBUFFER → null
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
   // draw — matches LAppModel.draw()
-  renderer!.setMvpMatrix(projection);
-  renderer!.drawModel();
+  renderer.setMvpMatrix(projection);
+  renderer.drawModel();
 
   // Resize
   if (canvas.width !== innerWidth || canvas.height !== innerHeight) {
