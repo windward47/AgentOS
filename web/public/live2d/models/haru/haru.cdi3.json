@@ -330,19 +330,5 @@
 			"Id": "Part01Sketch",
 			"Name": "[ 下絵 ]"
 		}
-	],
-	"CombinedParameters": [
-		[
-			"ParamAngleX",
-			"ParamAngleY"
-		],
-		[
-			"ParamEyeBallX",
-			"ParamEyeBallY"
-		],
-		[
-			"ParamMouthForm",
-			"ParamMouthOpenY"
-		]
 	]
 }
