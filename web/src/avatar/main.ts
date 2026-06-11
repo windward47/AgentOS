@@ -46,10 +46,8 @@ document.addEventListener('click', () => document.getElementById('ctx-menu')!.st
 (window as any).closeWindow = () => gcwFn?.()?.close();
 
 // ── Config ──
-const RES = '/live2d/demo/Haru/';  // model3.json, .moc3, textures, motions live here
-const SHADER = '/live2d/';          // .frag/.vert shader files
-const MOTION_GROUP = 'Idle';
-const EXPRESSION_COUNT = 26;        // haru_g_m01 .. m26
+const RES = '/live2d/models/haru/';
+const SHADER = '/live2d/';
 
 // ── State ──
 let canvas: HTMLCanvasElement, gl: WebGLRenderingContext;
@@ -57,8 +55,8 @@ let model: CubismUserModel;
 let renderer: any;
 let eyeBlink: CubismEyeBlink, breath: CubismBreath;
 let idMouth: any, idEyeL: any;
-let allMotions: Map<string, CubismMotion> = new Map();
-let motionCount = 0, totalMotionCount = 0;
+const expressionList: string[] = [];
+let idleMotion: CubismMotion | null = null;
 let initialized = false;
 let lipSmooth = 0, lastTime = 0;
 const root = document.getElementById('root')!;
@@ -90,20 +88,20 @@ function initCanvas() {
 // ── ③-⑨ Full init (mirrors LAppModel.loadAssets → setupModel) ──
 async function loadModel() {
   status('③ Loading model3.json…');
-  const sjson = await (await fetch(RES + 'Haru.model3.json')).arrayBuffer();
+  const sjson = await (await fetch(RES + 'haru.model3.json')).arrayBuffer();
   const setting = new CubismModelSettingJson(sjson, sjson.byteLength);
   console.log('[Haru] model3.json loaded');
 
   status('④ Loading .moc3…');
   model = new CubismUserModel();
-  const mocBuf = await (await fetch(RES + 'Haru.moc3')).arrayBuffer();
+  const mocBuf = await (await fetch(RES + 'haru.moc3')).arrayBuffer();
   model.loadModel(mocBuf);
   if (!model.getModel()) { throw new Error('Moc3 creation failed'); }
   console.log('[Haru] .moc3 loaded, drawables:', model.getModel()!.getDrawableCount());
 
   // ⑤-⑥ Physics + Pose
-  try { status('⑤ Physics…'); model.loadPhysics(await (await fetch(RES + 'Haru.physics3.json')).arrayBuffer(), 0); } catch {}
-  try { status('⑥ Pose…'); model.loadPose(await (await fetch(RES + 'Haru.pose3.json')).arrayBuffer(), 0); } catch {}
+  try { status('⑤ Physics…'); model.loadPhysics(await (await fetch(RES + 'haru.physics3.json')).arrayBuffer(), 0); } catch {}
+  try { status('⑥ Pose…'); model.loadPose(await (await fetch(RES + 'haru.pose3.json')).arrayBuffer(), 0); } catch {}
   console.log('[Haru] Physics/Pose loaded');
 
   // ⑦ Eye blink + Breath
@@ -125,21 +123,21 @@ async function loadModel() {
 
   // ⑧ Motions
   status('⑧ Loading motions…');
-  const motionCountTotal = (setting as any).getMotionCount?.(MOTION_GROUP) ?? 0;
-  totalMotionCount = motionCountTotal;
-  for (let i = 0; i < motionCountTotal; i++) {
-    const name = `${MOTION_GROUP}_${i}`;
-    const file = (setting as any).getMotionFileName?.(MOTION_GROUP, i);
-    if (!file) continue;
-    const buf = await (await fetch(RES + file)).arrayBuffer();
-    const motion = CubismMotion.create(buf, buf.byteLength);
-    if (motion) {
-      motion.setEffectIds([], []);
-      allMotions.set(name, motion);
-      motionCount++;
+  // Load idle
+  try {
+    const buf = await (await fetch(RES + 'motion/haru_g_idle.motion3.json')).arrayBuffer();
+    idleMotion = CubismMotion.create(buf, buf.byteLength);
+    if (idleMotion) {
+      idleMotion.setEffectIds([], []);
+      (model as any)._motionManager?.startMotionPriority(idleMotion, false, 1);
     }
+  } catch (e) { console.warn('[Haru] Idle motion failed:', e); }
+
+  // Expression list (m01-m26)
+  for (let i = 1; i <= 26; i++) {
+    expressionList.push('haru_g_m' + String(i).padStart(2, '0') + '.motion3.json');
   }
-  console.log('[Haru] Motions:', motionCount, '/', totalMotionCount);
+  console.log('[Haru] Expressions:', expressionList.length);
 
   // ⑨ Renderer + shaders + textures
   status('⑨ Renderer + shaders…');
@@ -159,17 +157,20 @@ async function loadModel() {
   if (!(shader as any)._isShaderLoaded) { throw new Error('Shader load timeout'); }
   console.log('[Haru] Shaders loaded');
 
-  // ⑩ Textures
+  // ⑩ Textures — Haru has 2 textures in haru.2048/
   status('⑩ Textures…');
-  const texCount = (setting as any).getTextureCount?.() ?? 0;
-  for (let i = 0; i < texCount; i++) {
-    const path = (setting as any).getTextureFileName?.(i);
+  const texPaths = (setting as any).getTextureCount?.();
+  // Fallback: manual path for known Haru model
+  const paths = texPaths > 0
+    ? Array.from({length: texPaths}, (_, i) => (setting as any).getTextureFileName(i))
+    : ['haru.2048/texture_00.png', 'haru.2048/texture_01.png'];
+  for (let i = 0; i < paths.length; i++) {
+    const path = paths[i];
     if (!path) continue;
     const tex = await loadTexture(path);
     renderer.bindTexture(i, tex);
     console.log('[Haru] Texture', i, path);
   }
-  console.log('[Haru] Textures:', texCount);
 
   initialized = true;
   status('');
@@ -266,16 +267,21 @@ function loop() {
   requestAnimationFrame(lipTick);
 })();
 
-// ── Idle motion cycler ──
-setInterval(() => {
-  if (!model || allMotions.size === 0) return;
-  const keys = [...allMotions.keys()];
-  const name = keys[Math.floor(Math.random() * keys.length)];
-  const motion = allMotions.get(name);
-  if (motion) {
-    const mm = (model as any)._motionManager;
-    mm?.startMotionPriority?.(motion, false, 1);
-  }
+// ── Idle motion refresher + expression cycler ──
+setInterval(async () => {
+  if (!model || !idleMotion) return;
+  const mm = (model as any)._motionManager;
+  // Re-start idle
+  mm?.startMotionPriority?.(idleMotion, false, 1);
+
+  // Random expression
+  if (expressionList.length === 0) return;
+  const name = expressionList[Math.floor(Math.random() * expressionList.length)];
+  try {
+    const buf = await (await fetch(RES + 'motion/' + name)).arrayBuffer();
+    const m = CubismMotion.create(buf, buf.byteLength);
+    if (m) { m.setEffectIds([], []); mm?.startMotionPriority?.(m, false, 3); }
+  } catch {}
 }, 8000 + Math.random() * 5000);
 
 // ── Entry ──
