@@ -1,4 +1,4 @@
-// Haru — Official Cubism 5 Demo + lip-sync + eye tracking
+// Haru — Official Cubism 5 Demo + lip-sync + eye tracking + transparency
 
 import * as ShaderData from '../live2d/shaders/shaders';
 import { CubismShader_WebGL } from '../live2d/rendering/cubismshader_webgl';
@@ -24,7 +24,7 @@ import { CubismFramework } from '../live2d/live2dcubismframework';
   this._isShaderLoaded = true;
 };
 
-// ═══ Lip-sync: hook saveParameters to persist mouth across frames ═══
+// ═══ Lip-sync ═══
 (window as any).__lipValue = 0;
 let _mouthIdx: number = -1;
 function getMouthIdx(model: any): number {
@@ -45,14 +45,27 @@ const _origSave = (CubismModel.prototype as any).saveParameters;
   return _origSave.call(this);
 };
 
-// ═══ Demo classes ═══
+// ═══ Demo ═══
 import { LAppDelegate } from './demo/lappdelegate';
 import { LAppView } from './demo/lappview';
+import { LAppSubdelegate } from './demo/lappsubdelegate';
 
-// Neutralize demo touch handlers that crash on missing sprite (_gear)
+// Neutralize demo touch (crashes on missing _gear sprite)
 (LAppView.prototype as any).onTouchesEnded = function () {};
 (LAppView.prototype as any).onTouchesBegan = function () {};
 (LAppView.prototype as any).onTouchesMoved = function () {};
+
+// ═══ Transparency: patch Subdelegate.update() blend mode ═══
+// Key insight: Cubism 5 shaders use premultiplied alpha (ONE, ONE_MINUS_SRC_ALPHA),
+// but the demo sets normal alpha blend (SRC_ALPHA, ONE_MINUS_SRC_ALPHA).
+// This mismatch + transparent clear = alpha corruption. Fix: use premultiplied blend.
+const _origUpdate = (LAppSubdelegate.prototype as any).update;
+(LAppSubdelegate.prototype as any).update = function () {
+  const gl = this.getGl();
+  gl.clearColor(0, 0, 0, 0);                // transparent background
+  gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); // premultiplied alpha (matches shaders)
+  return _origUpdate.call(this);
+};
 
 // ═══ Tauri ═══
 let invokeFn: any = null, gcwFn: any = null;
@@ -81,7 +94,7 @@ document.addEventListener('click', () => document.getElementById('ctx-menu')!.st
   requestAnimationFrame(lipTick);
 })();
 
-// ═══ Eye tracking: mousemove → setDragging, idle after 3s ═══
+// ═══ Eye tracking ═══
 let eyeIdleAt = 0, eyeRawX = 0, eyeRawY = 0;
 document.addEventListener('mousemove', (e) => {
   eyeRawX = (e.clientX / innerWidth) * 2 - 1;
