@@ -121,18 +121,18 @@ async function init() {
   renderer.startUp(gl);
   renderer.setIsPremultipliedAlpha(true);
 
-  // Two-pass shader init (see previous commit for rationale)
+  // Shader init — one generateShaders() call, wait for async callback
+  // generateShaders() → loadShaders() fetches .frag/.vert → .then() creates GL programs
+  // Bug fix: DO NOT manually set _isShaderLoaded. Let the .then() callback do it.
   const shader = CubismShaderManager_WebGL.getInstance().getShader(gl);
   shader.setShaderPath('/live2d/');
   shader.generateShaders();
-  for (let i = 0; i < 60; i++) {
-    if ((shader as any)._fragShaderSrcPremultipliedAlpha) break;
+  for (let i = 0; i < 120; i++) {
+    if ((shader as any)._isShaderLoaded) break;
     await new Promise(r => setTimeout(r, 250));
   }
-  (shader as any)._shaderSets = [];
-  shader.generateShaders();
-  (shader as any)._isShaderLoaded = true;
-  (shader as any)._isShaderLoading = false;
+  if (!(shader as any)._isShaderLoaded) { status('Shader timeout (30s)'); return; }
+  console.log('[Haru] Shaders loaded');
 
   // 8.  ★★★ LOAD + BIND TEXTURES (the missing piece) ★★★
   status('Loading textures…');
