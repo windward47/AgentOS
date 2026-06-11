@@ -14,7 +14,8 @@ Companion 是一个**解耦**的 Agent 生态系统：
 │       感知层（可替换）               │
 │  ASR │ TTS │ VAD │ 情绪识别         │
 ├─────────────────────────────────────┤
-│       Agent 核心（通过 omp RPC）     │
+│       Agent 核心（Bun sidecar）      │
+│  @oh-my-pi/pi-agent-core SDK          │
 │  对话管理 │ LLM 编排 │ 工具调用     │
 ├─────────────────────────────────────┤
 │       工具层（社区贡献，MCP 协议）   │
@@ -32,8 +33,8 @@ Companion 是一个**解耦**的 Agent 生态系统：
 
 ## Agent 核心策略
 
-Companion **不自研 LLM 编排**，而是通过子进程接入 [oh-my-pi](https://github.com/can1357/oh-my-pi) (`omp --mode rpc`)。
-oh-my-pi 提供 40+ LLM 提供商、32 个内置工具、多模型路由、流干预规则等能力。
+Companion **不自研 LLM 编排**，而是通过 Bun sidecar 进程接入 [oh-my-pi](https://github.com/can1357/oh-my-pi) 的 `@oh-my-pi/pi-agent-core` SDK。
+SDK 提供 40+ LLM 提供商、多模型路由、原生工具调用、流式事件等能力。
 Companion 专注于语音交互体验和虚拟形象呈现。
 
 ## 开发阶段
@@ -43,11 +44,11 @@ Companion 专注于语音交互体验和虚拟形象呈现。
 | 前置约定 | Git 仓库 + 分支 + .gitignore + LICENSE + README | ✅ 已完成 |
 | 阶段零 | 项目初始化 + trait 定义 + 配置系统 | ✅ 已完成 |
 | **阶段一** | **MVP — 核心对话 + 沙盒工具 + Live2D 形象** | ✅ **已完成** |
-| Sprint 1.1 | 文字对话 + oh-my-pi RPC Agent 集成 | ✅ |
+| Sprint 1.1 | 文字对话 + oh-my-pi SDK Agent 集成 | ✅ |
 | Sprint 1.2 | 沙盒路径检查 + 文件/命令工具 | ✅ |
 | Sprint 1.3 | 麦克风捕获 + VAD 状态机 + ASR (本地/云端) | ✅ |
 | Sprint 1.4 | Live2D 形象 (PixiJS + pixi-live2d-display) | ✅ |
-| Sprint 1.5 | oh-my-pi RPC Agent 核心集成 | ✅ |
+| Sprint 1.5 | oh-my-pi SDK Agent 核心集成 | ✅ |
 | Sprint 1.6 | 设置面板 + 状态栏 | ✅ |
 | 阶段二 | 实时打断 + 本地 TTS + 浏览器控制 + 系统模式 | 📋 待开始 |
 | 阶段三 | 情绪识别 + 风格系统 + MCP 插件 + 社区商店 | 📋 待开始 |
