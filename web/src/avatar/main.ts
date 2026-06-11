@@ -1,4 +1,4 @@
-// Haru — PixiJS + pixi-live2d-display
+// Haru — manual update order: motion update → our params → draw
 
 import * as PIXI from 'pixi.js';
 import { Live2DModel } from 'pixi-live2d-display';
@@ -53,7 +53,8 @@ async function init() {
   document.getElementById('root')!.appendChild(canvas);
 
   Live2DModel.registerTicker(PIXI.Ticker);
-  model = await Live2DModel.from(MODEL, { autoUpdate: true, autoInteract: false });
+  // ★ autoUpdate: false — we control update order manually
+  model = await Live2DModel.from(MODEL, { autoUpdate: false, autoInteract: false });
   model.anchor.set(0.5, 0.5);
   model.x = app.renderer.width / 2;
   model.y = app.renderer.height / 2;
@@ -66,32 +67,31 @@ async function init() {
     if (model) { model.x = innerWidth / 2; model.y = innerHeight / 2; }
   }).observe(canvas);
 
-  // Log available API
-  const im = (model as any).internalModel;
-  const cm = im?.coreModel;
-  const keys = cm ? Object.keys(cm).filter(k => typeof cm[k] === 'function').slice(0, 20) : [];
-  console.log('[Haru] coreModel methods:', keys.join(', '));
+  // Register BEFORE the Live2D ticker to ensure our params stick
+  app.ticker.add(() => {
+    if (!model) return;
+    const m = model as any;
+    const b = (model as any).internalModel?.coreModel;
+    if (!b) return;
 
-  function paramLoop() {
-    if (!model) { requestAnimationFrame(paramLoop); return; }
-    const core = (model as any).internalModel?.coreModel;
-    if (!core) { dbg.textContent = 'no coreModel'; requestAnimationFrame(paramLoop); return; }
+    // 1. Run motion/physics/expression update
+    m.update?.();
 
+    // 2. NOW set our params — they'll override the animation
     const blinkT = Date.now() % 4000 / 4000;
     const eyeOpen = blinkT > 0.95 ? 0.05 : 1.0;
     const idle = Date.now() > eyeIdleAt;
+    const ax = idle ? 0 : eyeTargetX * 30;
+    const ay = idle ? 0 : eyeTargetY * 30;
 
-    // Try multiple approaches
-    try { core.setParameterValueById?.('ParamMouthOpenY', mouthOpen, 1); } catch {}
-    try { core.setParameterValueById?.('ParamEyeLOpen', eyeOpen, 1); } catch {}
-    try { core.setParameterValueById?.('ParamEyeROpen', eyeOpen, 1); } catch {}
-    try { core.setParameterValueById?.('ParamAngleX', idle ? 0 : eyeTargetX * 30, 1); } catch {}
-    try { core.setParameterValueById?.('ParamAngleY', idle ? 0 : eyeTargetY * 30, 1); } catch {}
+    b.setParameterValueById?.('ParamMouthOpenY', mouthOpen, 1);
+    b.setParameterValueById?.('ParamEyeLOpen', eyeOpen, 1);
+    b.setParameterValueById?.('ParamEyeROpen', eyeOpen, 1);
+    b.setParameterValueById?.('ParamAngleX', ax, 1);
+    b.setParameterValueById?.('ParamAngleY', ay, 1);
 
     dbg.textContent = `eye:${eyeTargetX.toFixed(2)},${eyeTargetY.toFixed(2)} idle:${idle} mouth:${mouthOpen.toFixed(2)}`;
-    requestAnimationFrame(paramLoop);
-  }
-  requestAnimationFrame(paramLoop);
+  });
 }
 
 init();
