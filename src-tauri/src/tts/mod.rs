@@ -20,4 +20,5 @@ pub enum TtsError {
 }
 
 pub mod mock;
+pub mod playback;
 pub mod xiaomi_tts;

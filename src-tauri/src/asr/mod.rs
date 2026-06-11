@@ -21,6 +21,7 @@ pub enum AsrError {
     AudioTooShort(u32),
 }
 
+pub mod aliyun_asr;
 pub mod mock;
 pub mod whisper_cloud;
 pub mod whisper_local;

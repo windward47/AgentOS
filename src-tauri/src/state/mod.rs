@@ -207,6 +207,20 @@ pub async fn get_lip_level(state: tauri::State<'_, AppState>) -> Result<f32, Str
     Ok(*state.lip_level.lock().unwrap())
 }
 
+/// Returns the current avatar animation state: "idle" | "listening" | "speaking".
+#[tauri::command]
+pub async fn get_voice_state(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    let s = if state.is_speaking.load(Ordering::Relaxed) {
+        "speaking"
+    } else if state.is_listening.load(Ordering::Relaxed) {
+        "listening"
+    } else {
+        "idle"
+    };
+    log::debug!("get_voice_state → {}", s);
+    Ok(s.into())
+}
+
 /// Tauri command: take a screenshot of a given URL via Playwright.
 #[tauri::command]
 pub async fn browse_screenshot(url: String) -> Result<String, String> {

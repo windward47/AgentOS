@@ -84,7 +84,65 @@ pub struct CompanionConfig {
     pub tts_custom_key: Option<String>,
     #[serde(default)]
     pub tts_custom_model: Option<String>,
+
+    // ── Global voice (system-tray hotkey ASR/TTS) ──
+    #[serde(default)]
+    pub global_voice: GlobalVoiceConfig,
 }
+
+/// Configuration for global voice hotkey/inject/TTS features.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GlobalVoiceConfig {
+    /// Hotkey for recording toggle (e.g. "Alt+`")
+    #[serde(default = "default_global_record_hotkey")]
+    pub record_hotkey: String,
+
+    /// Hotkey for TTS trigger (e.g. "Alt+T")
+    #[serde(default = "default_global_tts_hotkey")]
+    pub tts_hotkey: String,
+
+    /// Hotkey to switch inject mode (e.g. "Alt+Shift+V")
+    #[serde(default = "default_inject_switch_hotkey")]
+    pub inject_mode_switch_hotkey: String,
+
+    /// Hotkey to switch ASR engine (e.g. "Alt+Shift+E")
+    #[serde(default = "default_engine_switch_hotkey")]
+    pub engine_switch_hotkey: String,
+
+    /// Inject mode: "keyboard" | "clipboard"
+    #[serde(default = "default_inject_mode")]
+    pub inject_mode: String,
+
+    /// ASR engine for global recording: "mimo" | "openai" | "aliyun" | "whisper-local"
+    #[serde(default = "default_global_asr_engine")]
+    pub asr_engine: String,
+
+    /// TTS engine for global TTS: "mimo-tts"
+    #[serde(default = "default_global_tts_engine")]
+    pub tts_engine: String,
+}
+
+impl Default for GlobalVoiceConfig {
+    fn default() -> Self {
+        Self {
+            record_hotkey: default_global_record_hotkey(),
+            tts_hotkey: default_global_tts_hotkey(),
+            inject_mode_switch_hotkey: default_inject_switch_hotkey(),
+            engine_switch_hotkey: default_engine_switch_hotkey(),
+            inject_mode: default_inject_mode(),
+            asr_engine: default_global_asr_engine(),
+            tts_engine: default_global_tts_engine(),
+        }
+    }
+}
+
+fn default_global_record_hotkey() -> String { "Alt+`".into() }
+fn default_global_tts_hotkey() -> String { "Alt+T".into() }
+fn default_inject_switch_hotkey() -> String { "Alt+Shift+V".into() }
+fn default_engine_switch_hotkey() -> String { "Alt+Shift+E".into() }
+fn default_inject_mode() -> String { "keyboard".into() }
+fn default_global_asr_engine() -> String { "mimo".into() }
+fn default_global_tts_engine() -> String { "mimo-tts".into() }
 
 fn default_sandbox_path() -> PathBuf {
     dirs::home_dir()
@@ -121,6 +179,7 @@ impl Default for CompanionConfig {
             llm_custom_url: None, llm_custom_key: None, llm_custom_model: None,
             asr_custom_url: None, asr_custom_key: None, asr_custom_model: None,
             tts_custom_url: None, tts_custom_key: None, tts_custom_model: None,
+            global_voice: GlobalVoiceConfig::default(),
         }
     }
 }

@@ -4,6 +4,7 @@
 //! The capture loop writes into a short (2s) ring buffer for VAD/ASR consumption.
 
 pub mod capture;
+pub mod utils;
 pub mod vad;
 
 use thiserror::Error;
