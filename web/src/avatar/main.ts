@@ -23,6 +23,14 @@ import('@tauri-apps/api/window').then(m => {
 document.addEventListener('contextmenu', e => { e.preventDefault(); const c = document.getElementById('ctx-menu')!; c.style.left = Math.min(e.clientX, innerWidth - 110) + 'px'; c.style.top = Math.min(e.clientY, innerHeight - 50) + 'px'; c.style.display = 'block'; });
 document.addEventListener('click', () => document.getElementById('ctx-menu')!.style.display = 'none');
 (window as any).closeWindow = () => gcwFn?.()?.close();
+let isPinned = true; // default from tauri.conf.json: alwaysOnTop=true
+(window as any).togglePin = () => {
+  isPinned = !isPinned;
+  if (gcwFn) {
+    const w = gcwFn();
+    w?.setAlwaysOnTop(isPinned).catch(() => {});
+  }
+};
 
 // Poll at ~10fps
 (function avatarTick() {
@@ -40,7 +48,6 @@ document.addEventListener('click', () => document.getElementById('ctx-menu')!.st
   requestAnimationFrame(avatarTick);
 })();
 
-document.addEventListener('pointermove', (e) => { eyeTargetX = (e.clientX / innerWidth) * 2 - 1; eyeTargetY = (e.clientY / innerHeight) * 2 - 1; eyeIdleAt = Date.now() + 3000; });
 document.addEventListener('wheel', (e) => { e.preventDefault(); currentScale += e.deltaY > 0 ? -0.015 : 0.015; currentScale = Math.max(0.04, Math.min(0.40, currentScale)); if (model) model.scale.set(currentScale); }, { passive: false });
 
 async function init() {
@@ -56,6 +63,15 @@ async function init() {
     if (!model) return;
     const b = (model as any).internalModel?.coreModel;
     if (!b) return;
+
+    // Cursor tracking at full 60fps for smooth head movement
+    if (invokeFn) {
+      invokeFn('get_cursor_pos').then(([cx, cy]: [number, number]) => {
+        eyeTargetX = (cx / screen.width) * 2 - 1;
+        eyeTargetY = (cy / screen.height) * 2 - 1;
+        if (cx !== 0 || cy !== 0) eyeIdleAt = Date.now() + 3000;
+      }).catch(() => {});
+    }
 
     curAngle += (tgtAngle - curAngle) * 0.15;
     curBrow += (tgtBrow - curBrow) * 0.15;
@@ -75,7 +91,7 @@ async function init() {
         // head turn: mouse tracking + listening bias
         // Listening: big head turn + apply expression
         b.setParameterValueById('ParamAngleX', (idle ? 0 : eyeTargetX * 30) + curAngle, 1);
-        b.setParameterValueById('ParamAngleY', idle ? 0 : eyeTargetY * 30, 1);
+        b.setParameterValueById('ParamAngleY', idle ? 0 : -eyeTargetY * 30, 1);
         if (voiceState === 'listening') {
           b.setParameterValueById('ParamAngleZ', 10, 1); // slight tilt
         }

@@ -221,6 +221,14 @@ pub async fn get_voice_state(state: tauri::State<'_, AppState>) -> Result<String
     Ok(s.into())
 }
 
+/// Returns the global cursor position (screen coordinates).
+#[tauri::command]
+pub async fn get_cursor_pos() -> Result<(i32, i32), String> {
+    use enigo::{Enigo, Mouse, Settings};
+    let enigo = Enigo::new(&Settings::default()).map_err(|e| format!("enigo: {:?}", e))?;
+    enigo.location().map_err(|e| format!("location: {:?}", e))
+}
+
 /// Tauri command: take a screenshot of a given URL via Playwright.
 #[tauri::command]
 pub async fn browse_screenshot(url: String) -> Result<String, String> {

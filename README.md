@@ -50,7 +50,9 @@ Companion 专注于语音交互体验和虚拟形象呈现。
 | Sprint 1.4 | Live2D 形象 (PixiJS + pixi-live2d-display) | ✅ |
 | Sprint 1.5 | oh-my-pi SDK Agent 核心集成 | ✅ |
 | Sprint 1.6 | 设置面板 + 状态栏 | ✅ |
-| 阶段二 | 实时打断 + 本地 TTS + 浏览器控制 + 系统模式 | 📋 待开始 |
+| 阶段二 | 实时打断 + 全局语音热键 + 系统托盘 + 浏览器控制 + Live2D 动画联动 | ✅ **已完成** |
+| Sprint 2.1 | 实时打断 (bg VAD → stop TTS → ASR → auto-send) | ✅ |
+| Sprint 2.2-2.5 | 全局语音热键 ASR/TTS (Alt+\` / Alt+T) + 系统托盘 + Live2D animation | ✅ |
 | 阶段三 | 情绪识别 + 风格系统 + MCP 插件 + 社区商店 | 📋 待开始 |
 | 阶段四 | VR 模式 + 跨平台打包 + 性能优化 | 📋 待开始 |
 
@@ -69,17 +71,29 @@ AgentOS/
 │   │   ├── audio/
 │   │   │   ├── mod.rs              # AudioError
 │   │   │   ├── capture.rs          # cpal 麦克风 + 环形缓冲区
+│   │   │   ├── utils.rs            # WAV 编码、f32↔i16 转换、RMS
 │   │   │   └── vad.rs              # VAD 状态机 (EnergyVad + 四态)
 │   │   ├── asr/
 │   │   │   ├── mod.rs              # AsrProvider trait + VoiceInputService
+│   │   │   ├── aliyun_asr.rs       # 阿里云一句话识别 ASR
 │   │   │   ├── mock.rs             # MockAsr (测试用)
 │   │   │   ├── whisper_local.rs    # Whisper.cpp 子进程
-│   │   │   └── whisper_cloud.rs    # OpenAI Whisper API
+│   │   │   ├── whisper_cloud.rs    # OpenAI Whisper API
+│   │   │   └── xiaomi_asr.rs       # 小米 Mimo ASR
 │   │   ├── tts/
 │   │   │   ├── mod.rs              # TtsProvider trait
-│   │   │   └── mock.rs             # MockTts (测试用)
+│   │   │   ├── mock.rs             # MockTts (测试用)
+│   │   │   ├── xiaomi_tts.rs       # 小米 Mimo TTS
+│   │   │   └── playback.rs         # 系统播放器 (powershell/afplay/aplay)
 │   │   ├── llm/mod.rs              # ChatLlm trait (降级方案)
 │   │   ├── emotion/mod.rs          # EmotionEngine trait (预留)
+│   │   ├── hotkey/mod.rs           # 全局热键监听 (rdev)
+│   │   ├── inject/
+│   │   │   ├── mod.rs              # 文字注入调度器 + InjectMode
+│   │   │   ├── keyboard.rs         # enigo 键盘模拟注入
+│   │   │   ├── clipboard.rs        # 剪贴板注入
+│   │   │   └── text_reader.rs      # Ctrl+C 模拟读取选中文字
+│   │   ├── capture_mgr.rs          # 全局录音管理器 (Vec 累积, 不限时长)
 │   │   ├── mcp/mod.rs              # McpTool trait
 │   │   ├── tools/
 │   │   │   ├── mod.rs              # ToolRegistry
@@ -123,6 +137,9 @@ AgentOS/
 | `get_lip_level` | 无 | `number` | 读取嘴型值 |
 | `browse_screenshot` | `url: string` | `string` (base64 PNG) | 浏览器截图 |
 | `get_audit_log` | 无 | `string` | 读取操作日志 |
+| `list_models` | 无 | `string[]` | 获取可用模型列表 |
+| `get_voice_state` | 无 | `"idle"\|"listening"\|"speaking"` | Live2D动画状态 |
+| `get_cursor_pos` | 无 | `[number, number]` | 全局光标坐标 |
 
 ## 技术栈
 

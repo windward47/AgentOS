@@ -68,6 +68,7 @@ pub fn run() {
             state::set_lip_level,
             state::get_lip_level,
             state::get_voice_state,
+            state::get_cursor_pos,
             state::browse_screenshot,
             state::get_audit_log,
             state::list_models,

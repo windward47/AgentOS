@@ -184,9 +184,10 @@ Live2D 不应该和聊天 UI 挤在同一个 Vue 组件里。正确做法：
 | 1.5 | ✅ | omp config (Windows .cmd, SiliconFlow) |
 | 1.6 | ✅ | Settings UI + model/tool bridges to omp |
 | **2.1** | **✅** | **Interrupt: bg VAD → stop TTS → ASR → auto-send** |
-| 2.2 | 📋 | Local TTS (ChatTTS) |
+| 2.2 | ✅ | Local TTS (ChatTTS) — replaced by global voice hotkey ASR/TTS with Xiaomi API |
 | 2.3 | ✅ | Browser screenshot (Playwright headless Chrome) |
 | 2.4 | ✅ | Audit logging + system mode switch |
+| **2.5** | **✅** | **Global voice hotkey system (Alt+` ASR, Alt+T TTS) + system tray menu + Live2D animation** |
 
 ## Notes
 
