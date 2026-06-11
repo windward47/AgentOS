@@ -17,6 +17,7 @@
 //! never interact with the LLM or tools directly.
 
 pub mod omp_rpc;
+pub mod omp_sidecar;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

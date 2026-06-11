@@ -152,3 +152,21 @@ cargo tauri dev
 ---
 
 *Companion 不是一个应用，而是一个 Agent 生态的底座。*
+
+## Testing with playwright-cli
+
+```bash
+# Install (one-time)
+npm install -g @playwright/cli@latest
+playwright-cli install --skills
+
+# Visual debugging (headed mode)
+playwright-cli open http://localhost:5173/avatar.html --headed
+playwright-cli screenshot
+
+# Check console
+playwright-cli console
+
+# Run JS in page
+playwright-cli eval "document.title"
+```

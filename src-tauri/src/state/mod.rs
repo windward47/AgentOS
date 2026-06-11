@@ -1,5 +1,6 @@
 use crate::agent::{AgentEngine, ConversationMessage, MessageRole};
-use crate::agent::omp_rpc::{OmpRpcClient, provider_to_model};
+use crate::agent::omp_sidecar::OmpAgentSidecar;
+use crate::agent::omp_rpc::provider_to_model;
 use crate::asr::AsrProvider;
 use crate::tts::TtsProvider;
 use crate::config::{CompanionConfig, ConfigManager};
@@ -17,7 +18,7 @@ pub struct AppState {
     pub lip_level: std::sync::Mutex<f32>,
     pub config: Arc<Mutex<CompanionConfig>>,
     pub config_manager: ConfigManager,
-    pub agent: Arc<OmpRpcClient>,
+    pub agent: Arc<OmpAgentSidecar>,
     pub tools: Arc<ToolRegistry>,
     pub history: Arc<Mutex<Vec<ConversationMessage>>>,
     pub audit: AuditLogger,
@@ -33,6 +34,7 @@ fn resolve_api_token(config: &CompanionConfig) -> String {
     String::new()
 }
 
+#[allow(dead_code)]
 fn resolve_omp_binary() -> String {
     #[cfg(target_os = "windows")]
     {
@@ -70,12 +72,10 @@ impl AppState {
         let config_manager = ConfigManager::new().expect("failed to init config manager");
         let config = config_manager.load().expect("failed to load config");
         let audit = AuditLogger::new(&config_manager.root_dir()).expect("failed to init audit logger");
-        let binary = resolve_omp_binary();
         let sandbox_root = config_manager.root_dir().join("sandbox");
         let tools = Arc::new(ToolRegistry::with_builtins(sandbox_root));
-        let model = provider_to_model(&config.llm_provider).to_string();
-        let agent = Arc::new(OmpRpcClient::with_tools(&binary, tools.clone()));
-        agent.set_model(model);
+        let agent = Arc::new(OmpAgentSidecar::new());
+        // Sidecar is spawned lazily on first chat request via spawn_if_needed()
         Self {
             system_mode: AtomicBool::new(config.system_mode),
             is_speaking: AtomicBool::new(false),
@@ -96,6 +96,31 @@ impl AppState {
 /// Tauri command: send a chat message to the agent and get a reply.
 #[tauri::command]
 pub async fn chat(state: tauri::State<'_, AppState>, message: String) -> Result<String, String> {
+    // Auto-spawn sidecar if not running
+    if !state.agent.is_running().await {
+        state.agent.spawn().await.map_err(|e| format!("Sidecar spawn failed: {e}"))?;
+    }
+    let history_snapshot = { let hist = state.history.lock().await; hist.clone() };
+    let response = state.agent.chat(&message, &history_snapshot).await
+        .map_err(|e| format!("Agent error: {e}"))?;
+    {
+        let mut hist = state.history.lock().await;
+        hist.push(ConversationMessage { role: MessageRole::User, content: message });
+        hist.push(ConversationMessage { role: MessageRole::Assistant, content: response.text.clone() });
+        if hist.len() > 50 { let keep = hist.len() - 50; hist.rotate_left(keep); hist.truncate(50); }
+    }
+    Ok(response.text)
+}
+
+/// Tauri command: send a chat message with tool support.
+/// The sidecar handles LLM orchestration and tool execution internally.
+/// This function wraps the sidecar interaction and manages conversation history.
+#[tauri::command]
+pub async fn chat_with_tools(state: tauri::State<'_, AppState>, message: String) -> Result<String, String> {
+    // Same as chat() but explicitly handles tool-augmented responses
+    if !state.agent.is_running().await {
+        state.agent.spawn().await.map_err(|e| format!("Sidecar spawn failed: {e}"))?;
+    }
     let history_snapshot = { let hist = state.history.lock().await; hist.clone() };
     let response = state.agent.chat(&message, &history_snapshot).await
         .map_err(|e| format!("Agent error: {e}"))?;
@@ -167,7 +192,7 @@ pub async fn update_config(state: tauri::State<'_, AppState>, config: CompanionC
         state.audit.log(AuditEvent::ModeSwitch { from: was_mode, to: config.system_mode });
     }
     let model = provider_to_model(&config.llm_provider).to_string();
-    state.agent.set_model(model);
+    state.agent.set_model(model).await;
     Ok(())
 }
 

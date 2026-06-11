@@ -6,13 +6,18 @@ Agent 核心通过 RPC 子进程接入 oh-my-pi，不自研 LLM 编排。
 ## Project
 
 - **Stack**: Tauri 2.0 (Rust backend) + Vue 3 + Vite + Tailwind CSS (frontend)
-- **Agent core**: oh-my-pi via `omp -p` (print mode, one-shot subprocess per chat message)
+- **Agent core**: oh-my-pi via Bun sidecar (`services/agent-sidecar/`) using `@oh-my-pi/pi-agent-core` SDK
+  - Persistent Bun subprocess with JSON-RPC over stdin/stdout
+  - Full event streaming (tokens, tool calls)
+  - `@oh-my-pi/pi-ai` for LLM provider routing
+  - Reads `~/.omp/agent/models.yml` and `~/.omp/agent/config.yml` for provider config
 - **Live2D**: Pre-built avatar-agent bundle (`web/public/avatar-agent/`) with Cubism Core (live2dcubismcore.min.js) + shimmed Cubism2 globals — loaded in a separate transparent Tauri window
 - **LLM API**: SiliconFlow API (`api.siliconflow.cn`) via omp → `sensenova` provider alias in `~/.omp/agent/models.yml`. Default model: `nex-agi/Nex-N2-Pro` (free tier)
 - **Entry points**:
   - Rust: `src-tauri/src/main.rs` → `lib.rs` (Tauri Builder)
   - Frontend: `web/src/main.ts` → `App.vue` → `views/ChatView.vue`
 - **Data root**: `~/.companion/` (config.json, sandbox/, logs/, tools/, models/)
+- **Sidecar**: `services/agent-sidecar/` — Bun process powered by `@oh-my-pi/pi-agent-core`
 
 ## Commands
 
@@ -45,7 +50,7 @@ curl -fsSL https://omp.sh/install | sh
 
 ```
 src-tauri/src/
-  agent/          AgentEngine trait + OmpRpcClient (omp -p subprocess)
+  agent/          AgentEngine trait + OmpAgentSidecar (Bun sidecar via JSON-RPC)
   audio/          AudioCapture (cpal mic + ring buffer) + VAD (4-state)
   asr/            AsrProvider + WhisperLocal/WhisperCloud/XiaomiAsr
   config.rs       ConfigManager: ~/.companion/config.json
@@ -175,9 +180,9 @@ Live2D 不应该和聊天 UI 挤在同一个 Vue 组件里。正确做法：
 | 1.1 | ✅ | Chat + omp -p + Nex-N2-Pro |
 | 1.2 | ✅ | Sandbox (5 tools, path escape) |
 | 1.3 | ✅ | ASR/TTS (Xiaomi chat API) + voice UI |
-| 1.4 | ✅ | Live2D multi-window + lip sync (IPC bridge) |
+| 1.4 | ✅ | Live2D: PixiJS + Cubism4 CDN + transparent window + lip-sync + eye tracking + scroll zoom |
 | 1.5 | ✅ | omp config (Windows .cmd, SiliconFlow) |
-| 1.6 | ✅ | Settings UI done; model + tool bridges to omp |
+| 1.6 | ✅ | Settings UI + model/tool bridges to omp |
 | **2.1** | **✅** | **Interrupt: bg VAD → stop TTS → ASR → auto-send** |
 | 2.2 | 📋 | Local TTS (ChatTTS) |
 | 2.3 | ✅ | Browser screenshot (Playwright headless Chrome) |
@@ -199,3 +204,12 @@ Live2D 不应该和聊天 UI 挤在同一个 Vue 组件里。正确做法：
 除非用户明确任务全自动化，交给你完全自主，否则按照以上AI Agent风格来。
 
 <!-- Quick-add space for future agent notes -->
+
+## Testing
+
+### playwright-cli (CLI-based browser testing)
+- **Install**: `npm install -g @playwright/cli@latest && playwright-cli install --skills`
+- **Usage**: `playwright-cli open http://localhost:5173/avatar.html --headed` for live visual debugging
+- **Key commands**: `snapshot`, `screenshot`, `eval "document.title"`, `console`
+- **Skills**: installed to `.claude/skills/playwright-cli/`
+- **Why CLI not MCP**: Token-efficient — no large tool schemas loaded into agent context
