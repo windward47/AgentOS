@@ -35,8 +35,8 @@ document.addEventListener('click', () => document.getElementById('ctx-menu')!.st
   requestAnimationFrame(lipTick);
 })();
 
-// Eye tracking
-document.addEventListener('mousemove', (e) => {
+// Eye tracking + mousemove on the full document
+document.addEventListener('pointermove', (e) => {
   eyeTargetX = (e.clientX / innerWidth) * 2 - 1;
   eyeTargetY = (e.clientY / innerHeight) * 2 - 1;
   eyeIdleAt = Date.now() + 3000;
@@ -50,16 +50,15 @@ document.addEventListener('wheel', (e) => {
   if (model) model.scale.set(currentScale);
 }, { passive: false });
 
-// Set param (copied from old avatar-agent)
-function setParam(name: string, value: number) {
-  if (!model) return;
-  try {
-    const cm = (model as any).internalModel?.coreModel;
-    if (cm) {
-      const idx = cm.getParameterIndex?.(name) ?? -1;
-      if (idx >= 0) cm.setParameterValueById?.(name, value);
-    }
-  } catch {}
+// Debug: show param values on screen (disable after testing)
+let debugEl: HTMLElement | null = null;
+function debug(msg: string) {
+  if (!debugEl) {
+    debugEl = document.createElement('div');
+    debugEl.style.cssText = 'position:fixed;bottom:4px;left:4px;color:#0f0;font-size:9px;font-family:monospace;pointer-events:none;z-index:9999';
+    document.body.appendChild(debugEl);
+  }
+  debugEl.textContent = msg;
 }
 
 async function init() {
@@ -71,32 +70,42 @@ async function init() {
   const canvas = app.view as HTMLCanvasElement;
   canvas.style.width = '100%'; canvas.style.height = '100%';
   document.getElementById('root')!.appendChild(canvas);
-  Live2DModel.registerTicker(PIXI.Ticker);
 
+  Live2DModel.registerTicker(PIXI.Ticker);
   model = await Live2DModel.from(MODEL, { autoUpdate: true, autoInteract: false });
   model.anchor.set(0.5, 0.5);
   model.x = app.renderer.width / 2;
   model.y = app.renderer.height / 2;
   model.scale.set(currentScale);
   app.stage.addChild(model as any);
-  console.log('[Haru] Ready ✓  scroll to zoom');
+  console.log('[Haru] Ready ✓');
 
   new ResizeObserver(() => {
     app.renderer.resize(innerWidth, innerHeight);
     if (model) { model.x = innerWidth / 2; model.y = innerHeight / 2; }
   }).observe(canvas);
 
-  app.ticker.add(() => {
-    if (!model) return;
+  // Use the Cubism4InternalModel's own setParameterValueById (accepts string IDs)
+  function paramLoop() {
+    if (!model) { requestAnimationFrame(paramLoop); return; }
+    const im = (model as any).internalModel;  // Cubism4InternalModel
+    if (!im || !im.setParameterValueById) { requestAnimationFrame(paramLoop); return; }
+
     const blinkT = Date.now() % 4000 / 4000;
     const eyeOpen = blinkT > 0.95 ? 0.05 : 1.0;
     const idle = Date.now() > eyeIdleAt;
-    setParam('ParamMouthOpenY', mouthOpen);
-    setParam('ParamEyeLOpen', eyeOpen);
-    setParam('ParamEyeROpen', eyeOpen);
-    setParam('ParamAngleX', idle ? 0 : eyeTargetX * 30);
-    setParam('ParamAngleY', idle ? 0 : eyeTargetY * 30);
-  });
+
+    im.setParameterValueById('ParamMouthOpenY', mouthOpen);
+    im.setParameterValueById('ParamEyeLOpen', eyeOpen);
+    im.setParameterValueById('ParamEyeROpen', eyeOpen);
+    im.setParameterValueById('ParamAngleX', idle ? 0 : eyeTargetX * 30);
+    im.setParameterValueById('ParamAngleY', idle ? 0 : eyeTargetY * 30);
+
+    debug(`eye:${eyeTargetX.toFixed(2)},${eyeTargetY.toFixed(2)} idle:${idle} angle:${(eyeTargetX*30).toFixed(0)} mouth:${mouthOpen.toFixed(2)}`);
+
+    requestAnimationFrame(paramLoop);
+  }
+  requestAnimationFrame(paramLoop);
 }
 
 init();
