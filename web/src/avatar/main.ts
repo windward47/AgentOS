@@ -197,16 +197,30 @@ function loop() {
   cm.update(); cm.loadParameters();
 
   // Clear + set state + draw (matches official demo LAppView.render + LAppSubdelegate.update)
+  // Clear + draw — matches official LAppSubdelegate.update() + LAppLive2DManager.onUpdate()
   gl.clearColor(0.102, 0.102, 0.180, 1.0);
   gl.clear(gl.COLOR_BUFFER_BIT);
-  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
-  gl.clearDepth(1.0);
-  renderer.setRenderState(null, [0, 0, canvas.width, canvas.height]);
+  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.clearDepth(1.0);
 
-  const matrix = new CubismMatrix44();
-  matrix.scale(0.55, 0.55);
-  matrix.translateRelative(canvas.width * 0.5 / 0.55, canvas.height * 0.5 / 0.55);
-  renderer.setMvpMatrix(matrix);
+  const projection = new CubismMatrix44();
+  const modelMatrix = model.getModelMatrix();
+
+  // Step 1: Scale model to Cubism view coords ([-1,1])
+  //   Haru's canvas width is ~3000+, setWidth(2.0) scales it to 2 units wide
+  modelMatrix.setWidth(2.0);
+
+  // Step 2: Map [-1,1] view coords to canvas pixels
+  if (canvas.width < canvas.height) {
+    projection.scale(1.0, canvas.width / canvas.height);
+  } else {
+    projection.scale(canvas.height / canvas.width, 1.0);
+  }
+
+  // Step 3: Combine model matrix into projection
+  projection.multiplyByMatrix(modelMatrix);
+
+  // Step 4: Set MVP + draw (matches LAppModel.draw())
+  renderer.setMvpMatrix(projection);
   renderer.drawModel();
 
   if (canvas.width !== innerWidth || canvas.height !== innerHeight) {
