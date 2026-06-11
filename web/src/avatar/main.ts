@@ -1,4 +1,6 @@
-// Haru — Official Cubism 5 Demo + lip-sync + eye tracking + transparency
+// Haru — Cubism 5 Demo + lip-sync + eye tracking
+// Transparency: not supported on Windows WebView2 + raw WebGL (PixiJS can,
+// but we use CubismRenderer directly). Known limitation, accepted.
 
 import * as ShaderData from '../live2d/shaders/shaders';
 import { CubismShader_WebGL } from '../live2d/rendering/cubismshader_webgl';
@@ -24,14 +26,15 @@ import { CubismFramework } from '../live2d/live2dcubismframework';
   this._isShaderLoaded = true;
 };
 
-// ═══ Lip-sync ═══
+// ═══ Lip-sync (saveParameters hook) ═══
 (window as any).__lipValue = 0;
 let _mouthIdx: number = -1;
 function getMouthIdx(model: any): number {
   if (_mouthIdx < 0) {
     try {
-      const id = (CubismFramework as any).getIdManager().getId('ParamMouthOpenY');
-      _mouthIdx = model.getParameterIndex(id);
+      _mouthIdx = model.getParameterIndex(
+        (CubismFramework as any).getIdManager().getId('ParamMouthOpenY')
+      );
     } catch {}
   }
   return _mouthIdx;
@@ -48,24 +51,11 @@ const _origSave = (CubismModel.prototype as any).saveParameters;
 // ═══ Demo ═══
 import { LAppDelegate } from './demo/lappdelegate';
 import { LAppView } from './demo/lappview';
-import { LAppSubdelegate } from './demo/lappsubdelegate';
 
-// Neutralize demo touch (crashes on missing _gear sprite)
+// Neutralize demo touch handlers that crash on missing _gear sprite
 (LAppView.prototype as any).onTouchesEnded = function () {};
 (LAppView.prototype as any).onTouchesBegan = function () {};
 (LAppView.prototype as any).onTouchesMoved = function () {};
-
-// ═══ Transparency: patch Subdelegate.update() blend mode ═══
-// Key insight: Cubism 5 shaders use premultiplied alpha (ONE, ONE_MINUS_SRC_ALPHA),
-// but the demo sets normal alpha blend (SRC_ALPHA, ONE_MINUS_SRC_ALPHA).
-// This mismatch + transparent clear = alpha corruption. Fix: use premultiplied blend.
-const _origUpdate = (LAppSubdelegate.prototype as any).update;
-(LAppSubdelegate.prototype as any).update = function () {
-  const gl = this.getGl();
-  gl.clearColor(0, 0, 0, 0);                // transparent background
-  gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); // premultiplied alpha (matches shaders)
-  return _origUpdate.call(this);
-};
 
 // ═══ Tauri ═══
 let invokeFn: any = null, gcwFn: any = null;
@@ -94,7 +84,7 @@ document.addEventListener('click', () => document.getElementById('ctx-menu')!.st
   requestAnimationFrame(lipTick);
 })();
 
-// ═══ Eye tracking ═══
+// ═══ Eye tracking: mousemove → setDragging, idle after 3s ═══
 let eyeIdleAt = 0, eyeRawX = 0, eyeRawY = 0;
 document.addEventListener('mousemove', (e) => {
   eyeRawX = (e.clientX / innerWidth) * 2 - 1;
