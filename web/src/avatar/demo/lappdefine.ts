@@ -33,7 +33,7 @@ export const ViewLogicalMaxBottom = -2.0;
 export const ViewLogicalMaxTop = 2.0;
 
 // 相対パス
-export const ResourcesPath = '/live2d/models/';
+export const ResourcesPath = '/live2d/models/haruchan/';
 
 // シェーダー相対パス
 export const ShaderPath = '../../Framework/Shaders/WebGL/';
