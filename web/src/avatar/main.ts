@@ -1,8 +1,28 @@
-// Haru Avatar — Directly runs the official Cubism 5 TypeScript Demo
-// All LApp* classes imported verbatim, only config/init adapted
+// Haru — Official Cubism 5 Demo
+// Shaders embedded at import time (Tauri SPA fallback intercepts .frag/.vert fetch)
 
+import * as ShaderData from '../live2d/shaders/shaders';
+import { CubismShader_WebGL } from '../live2d/rendering/cubismshader_webgl';
 import { LAppDelegate } from './demo/lappdelegate';
-import * as LAppDefine from './demo/lappdefine';
+
+// Monkey-patch: replace private loadShaders with inline source injection
+(CubismShader_WebGL.prototype as any).loadShaders = async function() {
+  this._vertShaderSrc = ShaderData.vertshadersrc_vert;
+  this._vertShaderSrcMasked = ShaderData.vertshadersrcmasked_vert;
+  this._vertShaderSrcSetupMask = ShaderData.vertshadersrcsetupmask_vert;
+  this._fragShaderSrcSetupMask = ShaderData.fragshadersrcsetupmask_frag;
+  this._fragShaderSrcPremultipliedAlpha = ShaderData.fragshadersrcpremultipliedalpha_frag;
+  this._fragShaderSrcMaskPremultipliedAlpha = ShaderData.fragshadersrcmaskpremultipliedalpha_frag;
+  this._fragShaderSrcMaskInvertedPremultipliedAlpha = ShaderData.fragshadersrcmaskinvertedpremultipliedalpha_frag;
+  this._vertShaderSrcCopy = ShaderData.vertshadersrccopy_vert;
+  this._fragShaderSrcCopy = ShaderData.fragshadersrccopy_frag;
+  this._fragShaderSrcColorBlend = ShaderData.fragshadersrccolorblend_frag;
+  this._fragShaderSrcAlphaBlend = ShaderData.fragshadersrcalphablend_frag;
+  this._vertShaderSrcBlend = ShaderData.vertshadersrcblend_vert;
+  this._fragShaderSrcBlend = ShaderData.fragshadersrcpremultipliedalphablend_frag;
+  this._isShaderLoading = false;
+  this._isShaderLoaded = true;
+};
 
 // Tauri
 let invokeFn: any = null, gcwFn: any = null;
@@ -23,20 +43,16 @@ document.addEventListener('contextmenu', e => {
 document.addEventListener('click', () => document.getElementById('ctx-menu')!.style.display = 'none');
 (window as any).closeWindow = () => gcwFn?.()?.close();
 
-// Lip-sync
-let lipSmooth = 0;
 (function lipTick() {
   if (invokeFn) {
     invokeFn('get_lip_level').then((l: any) => {
-      lipSmooth += (Math.min(+l * 1.8, 1) - lipSmooth) * 0.25;
-      // Drive mouth parameter on the Live2D model managed by LAppLive2DManager
       try {
         const mgr = (LAppDelegate.getInstance() as any)._subdelegates?.[0]?._live2dManager;
         const m = mgr?._models?.[0];
         const cm = m?.getModel?.();
         if (cm) {
           const idx = cm.getParameterIndex?.('ParamMouthOpenY');
-          if (idx >= 0) cm.setParameterValueById(idx, lipSmooth);
+          if (idx >= 0) cm.setParameterValueById(idx, Math.min(+l * 1.8, 1));
         }
       } catch {}
     }).catch(() => {});
@@ -44,13 +60,10 @@ let lipSmooth = 0;
   requestAnimationFrame(lipTick);
 })();
 
-// ── Init ──
 if (!(window as any).Live2DCubismCore) {
   document.getElementById('root')!.innerHTML = '<div style="color:red;padding:20px;">CubismCore not loaded</div>';
+} else if (!LAppDelegate.getInstance().initialize()) {
+  document.getElementById('root')!.innerHTML = '<div style="color:red;padding:20px;">Init failed</div>';
 } else {
-  if (!LAppDelegate.getInstance().initialize()) {
-    document.getElementById('root')!.innerHTML = '<div style="color:red;padding:20px;">Init failed</div>';
-  } else {
-    LAppDelegate.getInstance().run();
-  }
+  LAppDelegate.getInstance().run();
 }
