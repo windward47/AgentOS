@@ -1,4 +1,4 @@
-// Haru — autoUpdate:true + RAF param injection (additive to avoid override)
+// Haru — autoUpdate:true + PIXI ticker AFTER model update → our params visible at render
 
 import * as PIXI from 'pixi.js';
 import { Live2DModel } from 'pixi-live2d-display';
@@ -33,39 +33,34 @@ document.body.appendChild(dbg);
 
 async function init() {
   app = new PIXI.Application({ width: innerWidth, height: innerHeight, backgroundAlpha: 0, antialias: true, resolution: devicePixelRatio || 1, autoDensity: true });
-  const canvas = app.view as HTMLCanvasElement;
-  canvas.style.width = '100%'; canvas.style.height = '100%';
-  document.getElementById('root')!.appendChild(canvas);
+  document.getElementById('root')!.appendChild(app.view as HTMLCanvasElement);
 
   Live2DModel.registerTicker(PIXI.Ticker);
   model = await Live2DModel.from(MODEL, { autoUpdate: true, autoInteract: false });
   model.anchor.set(0.5, 0.5); model.x = app.renderer.width / 2; model.y = app.renderer.height / 2;
   model.scale.set(currentScale);
   app.stage.addChild(model as any);
-  console.log('[Haru] Ready ✓');
 
-  new ResizeObserver(() => { app.renderer.resize(innerWidth, innerHeight); if (model) { model.x = innerWidth / 2; model.y = innerHeight / 2; } }).observe(canvas);
-
-  // ★ RAF runs AFTER PIXI ticker — addParameterValueById ADDS to anim base
-  function paramLoop() {
-    if (!model) { requestAnimationFrame(paramLoop); return; }
+  // ★ Register AFTER Live2DModel's own ticker callback → our params are the LAST thing before render
+  app.ticker.add(() => {
+    if (!model) return;
     const b = (model as any).internalModel?.coreModel;
-    if (!b) { requestAnimationFrame(paramLoop); return; }
+    if (!b) return;
 
     const blinkT = Date.now() % 4000 / 4000;
     const eyeOpen = blinkT > 0.95 ? 0.05 : 1.0;
     const idle = Date.now() > eyeIdleAt;
 
-    // addParameterValueById ADDS to the animation value (works well with idle anim)
-    try { b.addParameterValueById?.('ParamMouthOpenY', mouthOpen * 0.5, 0.5); } catch {}
-    try { b.addParameterValueById?.('ParamEyeLOpen', (eyeOpen - 1.0) * 0.5, 0.5); } catch {}
-    try { b.addParameterValueById?.('ParamAngleX', (idle ? 0 : eyeTargetX * 30) * 0.3, 0.3); } catch {}
-    try { b.addParameterValueById?.('ParamAngleY', (idle ? 0 : eyeTargetY * 30) * 0.3, 0.3); } catch {}
+    b.setParameterValueById?.('ParamMouthOpenY', mouthOpen);
+    b.setParameterValueById?.('ParamEyeLOpen', eyeOpen);
+    b.setParameterValueById?.('ParamEyeROpen', eyeOpen);
+    b.setParameterValueById?.('ParamAngleX', idle ? 0 : eyeTargetX * 30);
+    b.setParameterValueById?.('ParamAngleY', idle ? 0 : eyeTargetY * 30);
 
     dbg.textContent = `eye:${eyeTargetX.toFixed(2)},${eyeTargetY.toFixed(2)} idle:${idle} mouth:${mouthOpen.toFixed(2)}`;
-    requestAnimationFrame(paramLoop);
-  }
-  requestAnimationFrame(paramLoop);
+  });
+
+  console.log('[Haru] Ready ✓');
 }
 
 init();
