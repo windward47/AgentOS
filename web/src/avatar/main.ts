@@ -1,5 +1,4 @@
-// Haru — Official Cubism 5 Demo + transparency + lip-sync + eye tracking
-// All SDK type issues worked around with `as any` — Cubism 5 TS declarations are incomplete
+// Haru — Official Cubism 5 Demo + lip-sync + eye tracking
 
 import * as ShaderData from '../live2d/shaders/shaders';
 import { CubismShader_WebGL } from '../live2d/rendering/cubismshader_webgl';
@@ -25,44 +24,35 @@ import { CubismFramework } from '../live2d/live2dcubismframework';
   this._isShaderLoaded = true;
 };
 
-// ═══ Lip-sync: saveParameters hook ═══
+// ═══ Lip-sync: hook saveParameters to persist mouth across frames ═══
 (window as any).__lipValue = 0;
-
 let _mouthIdx: number = -1;
 function getMouthIdx(model: any): number {
   if (_mouthIdx < 0) {
     try {
-      const idMgr = (CubismFramework as any).getIdManager();
-      const mouthId = idMgr.getId('ParamMouthOpenY');
-      const idx = model.getParameterIndex(mouthId);
-      if (idx >= 0) _mouthIdx = idx;
+      const id = (CubismFramework as any).getIdManager().getId('ParamMouthOpenY');
+      _mouthIdx = model.getParameterIndex(id);
     } catch {}
   }
   return _mouthIdx;
 }
-
 const _origSave = (CubismModel.prototype as any).saveParameters;
 (CubismModel.prototype as any).saveParameters = function () {
   const lip = (window as any).__lipValue;
   if (lip > 0.001) {
-    try {
-      const idx = getMouthIdx(this);
-      if (idx >= 0) this.setParameterValueById(idx, lip);
-    } catch {}
+    try { const i = getMouthIdx(this); if (i >= 0) this.setParameterValueById(i, lip); } catch {}
   }
   return _origSave.call(this);
 };
 
-// ═══ Import demo classes ═══
+// ═══ Demo classes ═══
 import { LAppDelegate } from './demo/lappdelegate';
-import { LAppSubdelegate } from './demo/lappsubdelegate';
+import { LAppView } from './demo/lappview';
 
-// ═══ Transparent clear ═══
-const _origSubUpdate = (LAppSubdelegate.prototype as any).update;
-(LAppSubdelegate.prototype as any).update = function () {
-  try { this.getGl().clearColor(0, 0, 0, 0); } catch {}
-  return _origSubUpdate.call(this);
-};
+// Neutralize demo touch handlers that crash on missing sprite (_gear)
+(LAppView.prototype as any).onTouchesEnded = function () {};
+(LAppView.prototype as any).onTouchesBegan = function () {};
+(LAppView.prototype as any).onTouchesMoved = function () {};
 
 // ═══ Tauri ═══
 let invokeFn: any = null, gcwFn: any = null;
@@ -85,37 +75,27 @@ document.addEventListener('click', () => document.getElementById('ctx-menu')!.st
 
 // ═══ Lip-sync poll ═══
 (function lipTick() {
-  if (invokeFn) {
-    invokeFn('get_lip_level')
-      .then((l: any) => { (window as any).__lipValue = Math.min(+l * 1.8, 1.0); })
-      .catch(() => {});
-  }
+  if (invokeFn) invokeFn('get_lip_level').then((l: any) => {
+    (window as any).__lipValue = Math.min(+l * 1.8, 1.0);
+  }).catch(() => {});
   requestAnimationFrame(lipTick);
 })();
 
-// ═══ Eye tracking ═══
-let eyeIdleAt = 0;
-let eyeRawX = 0, eyeRawY = 0;
-const EYE_IDLE_MS = 3000;
-
+// ═══ Eye tracking: mousemove → setDragging, idle after 3s ═══
+let eyeIdleAt = 0, eyeRawX = 0, eyeRawY = 0;
 document.addEventListener('mousemove', (e) => {
   eyeRawX = (e.clientX / innerWidth) * 2 - 1;
   eyeRawY = (e.clientY / innerHeight) * 2 - 1;
-  eyeIdleAt = Date.now() + EYE_IDLE_MS;
+  eyeIdleAt = Date.now() + 3000;
 });
-
 (function eyeTick() {
   const idle = Date.now() > eyeIdleAt;
-  const tx = idle ? 0 : eyeRawX;
-  const ty = idle ? 0 : eyeRawY;
+  const tx = idle ? 0 : eyeRawX, ty = idle ? 0 : eyeRawY;
   (window as any).__eyeX += (tx - (window as any).__eyeX) * 0.08;
   (window as any).__eyeY += (ty - (window as any).__eyeY) * 0.08;
   try {
-    const m = (LAppDelegate.getInstance() as any)
-      ?._subdelegates?.[0]?._live2dManager?._models?.[0];
-    if (m?.setDragging) {
-      m.setDragging((window as any).__eyeX, (window as any).__eyeY);
-    }
+    const m = (LAppDelegate.getInstance() as any)?._subdelegates?.[0]?._live2dManager?._models?.[0];
+    if (m?.setDragging) m.setDragging((window as any).__eyeX, (window as any).__eyeY);
   } catch {}
   requestAnimationFrame(eyeTick);
 })();

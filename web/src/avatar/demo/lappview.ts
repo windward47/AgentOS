@@ -231,7 +231,7 @@ export class LAppView {
     lapplive2dmanager.onTap(x, y);
 
     // 歯車にタップしたか
-    if (this._gear.isHit(posX, posY)) {
+    if (this._gear && this._gear.isHit(posX, posY)) {
       lapplive2dmanager.nextScene();
     }
   }
