@@ -76,3 +76,6 @@ web/.vite/
 # WIP services (not ready for commit)
 services/*
 !services/agent-sidecar/
+
+# Playwright CLI output
+.playwright-cli/

@@ -1,0 +1,13 @@
+{
+  "browser": {
+    "browserName": "chromium",
+    "contextOptions": {
+      "viewport": { "width": 360, "height": 480 }
+    }
+  },
+  "timeouts": {
+    "action": 10000,
+    "navigation": 30000
+  },
+  "outputDir": ".playwright-cli"
+}
