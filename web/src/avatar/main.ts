@@ -5,7 +5,7 @@ import * as PIXI from 'pixi.js';
 import { Live2DModel } from 'pixi-live2d-display';
 import 'pixi-live2d-display/cubism4';
 
-const MODEL = '/live2d/models/haruchan/Haru/Haru.model3.json';
+const MODEL = '/live2d/models/haru/haru.model3.json';
 
 // ── State ──
 let app: PIXI.Application;
