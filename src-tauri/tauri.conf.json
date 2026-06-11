@@ -26,7 +26,7 @@
         "width": 360,
         "height": 480,
         "url": "avatar.html?window=avatar",
-        "transparent": false,
+        "transparent": true,
         "decorations": false,
         "alwaysOnTop": true,
         "skipTaskbar": true,
