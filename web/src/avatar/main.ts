@@ -38,7 +38,6 @@ document.addEventListener('wheel', (e) => {
   if (model) model.scale.set(currentScale);
 }, { passive: false });
 
-// Debug panel — always show
 const dbg = document.createElement('div');
 dbg.style.cssText = 'position:fixed;bottom:4px;left:4px;color:#0f0;font-size:9px;font-family:monospace;pointer-events:none;z-index:9999';
 document.body.appendChild(dbg);
@@ -67,23 +66,29 @@ async function init() {
     if (model) { model.x = innerWidth / 2; model.y = innerHeight / 2; }
   }).observe(canvas);
 
+  // Log available API
+  const im = (model as any).internalModel;
+  const cm = im?.coreModel;
+  const keys = cm ? Object.keys(cm).filter(k => typeof cm[k] === 'function').slice(0, 20) : [];
+  console.log('[Haru] coreModel methods:', keys.join(', '));
+
   function paramLoop() {
     if (!model) { requestAnimationFrame(paramLoop); return; }
-    const im = (model as any).internalModel;
-    if (!im) { dbg.textContent = 'no internalModel'; requestAnimationFrame(paramLoop); return; }
-    if (!im.setParameterValueById) { dbg.textContent = 'no setParameterValueById'; requestAnimationFrame(paramLoop); return; }
+    const core = (model as any).internalModel?.coreModel;
+    if (!core) { dbg.textContent = 'no coreModel'; requestAnimationFrame(paramLoop); return; }
 
     const blinkT = Date.now() % 4000 / 4000;
     const eyeOpen = blinkT > 0.95 ? 0.05 : 1.0;
     const idle = Date.now() > eyeIdleAt;
 
-    im.setParameterValueById('ParamMouthOpenY', mouthOpen);
-    im.setParameterValueById('ParamEyeLOpen', eyeOpen);
-    im.setParameterValueById('ParamEyeROpen', eyeOpen);
-    im.setParameterValueById('ParamAngleX', idle ? 0 : eyeTargetX * 30);
-    im.setParameterValueById('ParamAngleY', idle ? 0 : eyeTargetY * 30);
+    // Try multiple approaches
+    try { core.setParameterValueById?.('ParamMouthOpenY', mouthOpen, 1); } catch {}
+    try { core.setParameterValueById?.('ParamEyeLOpen', eyeOpen, 1); } catch {}
+    try { core.setParameterValueById?.('ParamEyeROpen', eyeOpen, 1); } catch {}
+    try { core.setParameterValueById?.('ParamAngleX', idle ? 0 : eyeTargetX * 30, 1); } catch {}
+    try { core.setParameterValueById?.('ParamAngleY', idle ? 0 : eyeTargetY * 30, 1); } catch {}
 
-    dbg.textContent = `eye:${eyeTargetX.toFixed(2)},${eyeTargetY.toFixed(2)} idle:${idle} angle:${(idle?0:eyeTargetX*30).toFixed(0)} mouth:${mouthOpen.toFixed(2)}`;
+    dbg.textContent = `eye:${eyeTargetX.toFixed(2)},${eyeTargetY.toFixed(2)} idle:${idle} mouth:${mouthOpen.toFixed(2)}`;
     requestAnimationFrame(paramLoop);
   }
   requestAnimationFrame(paramLoop);
