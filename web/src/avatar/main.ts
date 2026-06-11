@@ -6,7 +6,6 @@ const MODEL = '/live2d/models/haru/haru.model3.json';
 let app: PIXI.Application, model: Live2DModel | null = null;
 let mouthOpen = 0, currentScale = 0.16;
 let eyeTargetX = 0, eyeTargetY = 0, eyeIdleAt = 0;
-let loggedApi = false;
 
 let invokeFn: any = null, gcwFn: any = null;
 import('@tauri-apps/api/core').then(m => invokeFn = m.invoke).catch(() => {});
@@ -32,28 +31,29 @@ async function init() {
   model.anchor.set(0.5, 0.5); model.x = app.renderer.width / 2; model.y = app.renderer.height / 2;
   model.scale.set(currentScale); app.stage.addChild(model as any);
 
+  // ★ Monkey-patch saveParameters: inject our values BEFORE state is persisted
+  let hooked = false;
   app.ticker.add(() => {
     if (!model) return;
     const b = (model as any).internalModel?.coreModel;
     if (!b) return;
 
-    if (!loggedApi) { loggedApi = true;
-      const proto = Object.getPrototypeOf(b);
-      const methods = Object.getOwnPropertyNames(proto).filter(k => typeof proto[k] === 'function').slice(0, 30);
-      console.log('[Haru-diag] coreModel proto methods:', methods.join(', '));
-      console.log('[Haru-diag] has setParameterValueById:', typeof b.setParameterValueById);
-      console.log('[Haru-diag] has getParameterIndex:', typeof b.getParameterIndex);
+    if (!hooked) {
+      const orig = b.saveParameters.bind(b);
+      b.saveParameters = () => {
+        const blinkT = Date.now() % 4000 / 4000;
+        const eyeOpen = blinkT > 0.95 ? 0.05 : 1.0;
+        const idle = Date.now() > eyeIdleAt;
+        b.setParameterValueById('ParamMouthOpenY', mouthOpen, 1);
+        b.setParameterValueById('ParamEyeLOpen', eyeOpen, 1);
+        b.setParameterValueById('ParamEyeROpen', eyeOpen, 1);
+        b.setParameterValueById('ParamAngleX', idle ? 0 : eyeTargetX * 30, 1);
+        b.setParameterValueById('ParamAngleY', idle ? 0 : eyeTargetY * 30, 1);
+        orig();
+      };
+      hooked = true;
+      console.log('[Haru] saveParameters hooked ✓');
     }
-
-    const blinkT = Date.now() % 4000 / 4000;
-    const eyeOpen = blinkT > 0.95 ? 0.05 : 1.0;
-    const idle = Date.now() > eyeIdleAt;
-
-    b.setParameterValueById?.('ParamMouthOpenY', mouthOpen, 1);
-    b.setParameterValueById?.('ParamEyeLOpen', eyeOpen, 1);
-    b.setParameterValueById?.('ParamEyeROpen', eyeOpen, 1);
-    b.setParameterValueById?.('ParamAngleX', idle ? 0 : eyeTargetX * 30, 1);
-    b.setParameterValueById?.('ParamAngleY', idle ? 0 : eyeTargetY * 30, 1);
   });
 
   console.log('[Haru] Ready ✓');
