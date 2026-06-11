@@ -73,7 +73,7 @@ async function init() {
     model.anchor.set(0.5, 0.5);
     model.x = app.renderer.width / 2;
     model.y = app.renderer.height / 2;
-    model.scale.set(0.18);
+    model.scale.set(0.08);
     app.stage.addChild(model as any);
     console.log('[Haru] Model loaded ✓');
     (window as any).__live2d = {
