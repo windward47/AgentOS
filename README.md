@@ -148,6 +148,7 @@ AgentOS/
 - **Agent 后端**: oh-my-pi (`omp -p` 同步子进程)
 - **LLM 模型**: SiliconFlow Nex-N2-Pro (免费) / Xiaomi MiMo V2.5 Pro
 - **Live2D 渲染**: 独立透明 Tauri 窗口 + PixiJS 7 + pixi-live2d-display + Cubism Core
+- **Live2D 交互**: 滚轮缩放、中键拖拽移动、左键双击还原、全局鼠标追踪转头、右键 Pin/关闭
 - **ASR**: Xiaomi MiMo V2.5 ASR (Chat Completions API)
 - **TTS**: Xiaomi MiMo V2.5 TTS (Chat Completions API, 9种声音)
 - **VAD**: 基于 RMS 能量的四态状态机 + 浏览器 MediaRecorder

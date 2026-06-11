@@ -4,7 +4,9 @@ import 'pixi-live2d-display/cubism4';
 
 const MODEL = '/live2d/models/haru/haru.model3.json';
 let app: PIXI.Application, model: Live2DModel | null = null;
-let mouthOpen = 0, currentScale = 0.16;
+let mouthOpen = 0, currentScale = 0.12;
+const DEF_SCALE = 0.12;
+const DEF_X = 0.35, DEF_Y = 0.35; // default position (window fraction)
 let eyeTargetX = 0, eyeTargetY = 0, eyeIdleAt = 0;
 let voiceState: string = 'idle';
 let frameN = 0;
@@ -48,14 +50,31 @@ let isPinned = true; // default from tauri.conf.json: alwaysOnTop=true
   requestAnimationFrame(avatarTick);
 })();
 
-document.addEventListener('wheel', (e) => { e.preventDefault(); currentScale += e.deltaY > 0 ? -0.015 : 0.015; currentScale = Math.max(0.04, Math.min(0.40, currentScale)); if (model) model.scale.set(currentScale); }, { passive: false });
+document.addEventListener('wheel', (e) => { e.preventDefault(); currentScale += e.deltaY > 0 ? -0.02 : 0.02; currentScale = Math.max(0.06, Math.min(0.50, currentScale)); if (model) model.scale.set(currentScale); }, { passive: false });
+
+// Middle-mouse drag to reposition the model within the window
+let dragModel = false, dragMx = 0, dragMy = 0, dragOx = 0, dragOy = 0;
+document.addEventListener('mousedown', (e) => {
+  if (e.button === 1) { e.preventDefault(); dragModel = true; dragMx = e.clientX; dragMy = e.clientY; dragOx = model?.x ?? 0; dragOy = model?.y ?? 0; }
+});
+document.addEventListener('mousemove', (e) => {
+  if (dragModel && model) { model.x = dragOx + (e.clientX - dragMx); model.y = dragOy + (e.clientY - dragMy); }
+});
+document.addEventListener('mouseup', (e) => {
+  if (e.button === 1) { dragModel = false; }
+});
+// Double-click to reset position + scale
+document.addEventListener('dblclick', () => {
+  currentScale = DEF_SCALE;
+  if (model) { model.x = app.renderer.width * DEF_X; model.y = app.renderer.height * DEF_Y; model.scale.set(currentScale); }
+});
 
 async function init() {
   app = new PIXI.Application({ width: innerWidth, height: innerHeight, backgroundAlpha: 0, antialias: true, resolution: devicePixelRatio || 1, autoDensity: true });
   document.getElementById('root')!.appendChild(app.view as HTMLCanvasElement);
   Live2DModel.registerTicker(PIXI.Ticker);
   model = await Live2DModel.from(MODEL, { autoUpdate: true, autoInteract: false });
-  model.anchor.set(0.5, 0.5); model.x = app.renderer.width / 2; model.y = app.renderer.height / 2;
+  model.anchor.set(0.5, 0.5); model.x = app.renderer.width * 0.34; model.y = app.renderer.height * 0.34;
   model.scale.set(currentScale); app.stage.addChild(model as any);
 
   let hooked = false;
