@@ -74,4 +74,5 @@ web/.vite/
 *.db-wal
 
 # WIP services (not ready for commit)
-services/
+services/*
+!services/agent-sidecar/
