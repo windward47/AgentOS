@@ -72,7 +72,7 @@ async function init() {
     model = await Live2DModel.from(MODEL, { autoUpdate: true, autoInteract: false });
     model.anchor.set(0.5, 0.5);
     model.x = app.renderer.width / 2;
-    model.y = app.renderer.height * 0.55;
+    model.y = app.renderer.height / 2;
     model.scale.set(0.18);
     app.stage.addChild(model as any);
     console.log('[Haru] Model loaded ✓');
@@ -88,7 +88,7 @@ async function init() {
 
   new ResizeObserver(() => {
     app.renderer.resize(innerWidth, innerHeight);
-    if (model) { model.x = innerWidth / 2; model.y = innerHeight * 0.55; }
+    if (model) { model.x = innerWidth / 2; model.y = innerHeight / 2; }
   }).observe(canvas);
 
   app.ticker.add(() => {

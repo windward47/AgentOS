@@ -3,10 +3,13 @@
   "identifier": "default",
   "description": "enables the default permissions plus devtools for testing",
   "windows": [
-    "main"
+    "main",
+    "avatar"
   ],
   "permissions": [
     "core:default",
-    "core:webview:allow-internal-toggle-devtools"
+    "core:webview:allow-internal-toggle-devtools",
+    "core:window:allow-start-dragging",
+    "core:window:allow-close"
   ]
 }
