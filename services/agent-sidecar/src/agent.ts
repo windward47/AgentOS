@@ -28,6 +28,133 @@ async function duckDuckGoSearch(query: string) {
     }
 }
 
+// ── File & system tools (Bun native) ───────────────────────────────────
+
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { execSync } from "node:child_process";
+import { Glob } from "bun";
+
+const TOOL_READ: AgentTool = {
+    name: "read",
+    label: "Read File",
+    description: "Read the contents of a file. Use this to check file contents, read code, or inspect documents.",
+    parameters: { type: "object", properties: { path: { type: "string", description: "Path to the file" } }, required: ["path"] },
+    execute: async (_id, params: any) => {
+        try {
+            const text = readFileSync(params.path, "utf-8").slice(0, 20000);
+            return { content: [{ type: "text" as const, text: text || "(empty file)" }] };
+        } catch (err: any) {
+            return { content: [{ type: "text" as const, text: `Read error: ${err.message}` }] };
+        }
+    },
+};
+
+const TOOL_WRITE: AgentTool = {
+    name: "write",
+    label: "Write File",
+    description: "Write content to a file. Creates the file if it doesn't exist, overwrites if it does.",
+    parameters: {
+        type: "object",
+        properties: { path: { type: "string" }, content: { type: "string" } },
+        required: ["path", "content"],
+    },
+    execute: async (_id, params: any) => {
+        try {
+            writeFileSync(params.path, params.content, "utf-8");
+            return { content: [{ type: "text" as const, text: `Wrote ${params.content.length} bytes to ${params.path}` }] };
+        } catch (err: any) {
+            return { content: [{ type: "text" as const, text: `Write error: ${err.message}` }] };
+        }
+    },
+};
+
+const TOOL_SEARCH: AgentTool = {
+    name: "search",
+    label: "Search Files",
+    description: "Search for a text pattern in files under a directory. Returns matching files with line numbers.",
+    parameters: {
+        type: "object",
+        properties: {
+            pattern: { type: "string", description: "Text or regex to search for" },
+            path: { type: "string", description: "Directory to search in (default: current directory)" },
+        },
+        required: ["pattern"],
+    },
+    execute: async (_id, params: any) => {
+        try {
+            const pattern = params.pattern;
+            const dir = params.path || ".";
+            const glob = new Glob("**/*");
+            let output = "";
+            for (const file of glob.scanSync({ cwd: dir, absolute: true })) {
+                if (file.length > 500_000) continue; // skip large files
+                try {
+                    const content = readFileSync(file, "utf-8");
+                    const lines = content.split("\n");
+                    for (let i = 0; i < lines.length; i++) {
+                        if (lines[i].includes(pattern)) {
+                            output += `${file}:${i + 1}: ${lines[i].trim().slice(0, 200)}\n`;
+                            if (output.length > 8000) { output += "...(truncated)\n"; break; }
+                        }
+                    }
+                } catch {}
+                if (output.length > 8000) break;
+            }
+            return { content: [{ type: "text" as const, text: output || `No matches for "${pattern}"` }] };
+        } catch (err: any) {
+            return { content: [{ type: "text" as const, text: `Search error: ${err.message}` }] };
+        }
+    },
+};
+
+const TOOL_FIND: AgentTool = {
+    name: "find",
+    label: "Find Files",
+    description: "Find files matching a glob pattern. Use this to locate files by name.",
+    parameters: {
+        type: "object",
+        properties: {
+            pattern: { type: "string", description: "Glob pattern (e.g. **/*.ts, *.json)" },
+            path: { type: "string", description: "Directory to search in (default: current directory)" },
+        },
+        required: ["pattern"],
+    },
+    execute: async (_id, params: any) => {
+        try {
+            const dir = params.path || ".";
+            const glob = new Glob(params.pattern);
+            const results: string[] = [];
+            for (const file of glob.scanSync({ cwd: dir, absolute: true })) {
+                results.push(file);
+                if (results.length >= 100) break;
+            }
+            const text = results.length > 0 ? results.join("\n") : `No files matching "${params.pattern}"`;
+            return { content: [{ type: "text" as const, text }] };
+        } catch (err: any) {
+            return { content: [{ type: "text" as const, text: `Find error: ${err.message}` }] };
+        }
+    },
+};
+
+const TOOL_BASH: AgentTool = {
+    name: "bash",
+    label: "Run Command",
+    description: "Execute a shell command and return its output. Use for system operations. Avoid destructive commands.",
+    parameters: {
+        type: "object",
+        properties: { command: { type: "string", description: "Shell command to execute" } },
+        required: ["command"],
+    },
+    execute: async (_id, params: any) => {
+        try {
+            const output = execSync(params.command, { timeout: 30000, maxBuffer: 100 * 1024, encoding: "utf-8", shell: process.env.ComSpec || "cmd.exe" });
+            return { content: [{ type: "text" as const, text: output || "(no output)" }] };
+        } catch (err: any) {
+            return { content: [{ type: "text" as const, text: `Command error: ${err.stderr || err.message}` }] };
+        }
+    },
+};
+
 export interface AgentCallbacks {
     onToken: (token: string) => void;
     onToolStart: (name: string) => void;
@@ -119,7 +246,7 @@ export class AgentManager {
             },
             getApiKey: () => this.apiKey,
         });
-        agent.setTools([WEB_SEARCH_TOOL, WEB_FETCH_TOOL]);
+        agent.setTools([WEB_SEARCH_TOOL, WEB_FETCH_TOOL, TOOL_READ, TOOL_WRITE, TOOL_SEARCH, TOOL_FIND, TOOL_BASH]);
         return agent;
     }
 
