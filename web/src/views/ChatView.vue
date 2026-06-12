@@ -2,6 +2,23 @@
 import { ref, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useAppStore } from '../stores/app'
+import MarkdownRenderer from '../components/MarkdownRenderer.vue'
+
+/** Strip markdown syntax for TTS playback (remove #, *, `, [], (), >, --- etc.) */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, '')         // code blocks
+    .replace(/`([^`]+)`/g, '$1')             // inline code
+    .replace(/[#*_~]{1,3}([^*#_~\n]+)[#*_~]{1,3}/g, '$1')  // bold/italic/strikethrough
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')// images
+    .replace(/^>\s?/gm, '')                  // blockquotes
+    .replace(/^[-*+]\s/gm, '')               // list markers
+    .replace(/^\d+\.\s/gm, '')              // numbered list markers
+    .replace(/---+/g, '')                    // horizontal rules
+    .replace(/\n{3,}/g, '\n\n')             // excessive newlines
+    .trim()
+}
 
 const store = useAppStore()
 const { messages } = store
@@ -367,7 +384,7 @@ watch(() => messages.length, async (len) => {
     const last = messages[len - 1]
     if (last.role === 'assistant' && Date.now() - ttsLastAutoMs > 2000) {
       ttsLastAutoMs = Date.now()
-      playTTS(last.content, len - 1)
+      playTTS(stripMarkdown(last.content), len - 1)
     }
   }
 })
@@ -462,8 +479,11 @@ async function browseScreenshot() {
           <div v-else class="flex gap-3 group">
             <div class="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-xs shrink-0 mt-0.5">AI</div>
             <div class="flex flex-col gap-1">
-              <div class="max-w-[75%] rounded-2xl rounded-bl-md bg-gray-50 border border-gray-100 px-4 py-2.5 text-[15px] leading-relaxed text-gray-800 whitespace-pre-wrap">{{ m.content }}</div>
-              <button @click="playTTS(m.content, i)"
+              <!-- Assistant message: render markdown -->
+              <div class="max-w-[75%] rounded-2xl rounded-bl-md bg-gray-50 border border-gray-100 px-4 py-2.5 text-gray-800">
+                <MarkdownRenderer :content="m.content" />
+              </div>
+              <button @click="playTTS(stripMarkdown(m.content), i)"
                 :class="['text-[11px] self-start px-2 py-0.5 rounded-full border transition-colors', playingId === i ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'text-gray-300 border-transparent hover:text-gray-500 hover:border-gray-200']">
                 {{ playingId === i ? '⏹ Stop' : '🔊 Listen' }}
               </button>

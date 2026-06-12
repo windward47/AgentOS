@@ -30,6 +30,7 @@
     "@tailwindcss/vite": "^4.3.0",
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/cli": "^2.11.2",
+    "marked": "^18.0.5",
     "pinia": "^2.3.1",
     "pixi-live2d-display": "^0.5.0-beta",
     "tailwindcss": "^4.3.0",
