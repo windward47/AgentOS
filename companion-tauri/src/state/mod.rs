@@ -13,7 +13,7 @@ use companion_core::tools::ToolRegistry;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tauri::Manager;
+use tauri::{Manager, Emitter};
 
 // ── AgentState ──────────────────────────────────────────────────────────
 
@@ -372,7 +372,7 @@ pub async fn set_avatar_always_on_top(app: tauri::AppHandle, on_top: bool) -> Re
     Ok(())
 }
 
-/// Reset avatar window position to default.
+/// Reset avatar window position and notify the avatar to reset model position.
 #[tauri::command]
 pub async fn reset_avatar_position(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("main") {
@@ -386,6 +386,9 @@ pub async fn reset_avatar_position(app: tauri::AppHandle) -> Result<(), String> 
                 .map_err(|e| format!("set avatar pos: {e}"))?;
         }
     }
+    // Tell the avatar window to reset model position + scale
+    app.emit("reset_model_position", ())
+        .map_err(|e| format!("emit reset_model_position: {e}"))?;
     Ok(())
 }
 

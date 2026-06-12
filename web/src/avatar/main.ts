@@ -22,6 +22,13 @@ import('@tauri-apps/api/window').then(m => {
   gcwFn = m.getCurrentWindow;
   document.getElementById('drag-bar')?.addEventListener('mousedown', e => { if (e.button === 0) gcwFn()?.startDragging(); });
 }).catch(() => {});
+// Listen for "reset model" event from Settings page
+import('@tauri-apps/api/event').then(m => {
+  m.listen('reset_model_position', () => {
+    currentScale = DEF_SCALE;
+    if (model) { model.x = app.renderer.width * DEF_X; model.y = app.renderer.height * DEF_Y; model.scale.set(currentScale); }
+  });
+}).catch(() => {});
 document.addEventListener('contextmenu', e => { e.preventDefault(); const c = document.getElementById('ctx-menu')!; c.style.left = Math.min(e.clientX, innerWidth - 110) + 'px'; c.style.top = Math.min(e.clientY, innerHeight - 50) + 'px'; c.style.display = 'block'; });
 document.addEventListener('click', () => document.getElementById('ctx-menu')!.style.display = 'none');
 (window as any).closeWindow = () => gcwFn?.()?.close();
