@@ -316,26 +316,25 @@ async function playTTS(text: string, msgIdx: number) {
       ttsSource.playbackRate.value = ttsSpeed.value
       ttsSource.connect(audioCtx.destination)
 
-      // Wait for playback to finish before continuing to next chunk
-      await new Promise<void>(resolve => {
-        ttsSource!.onended = () => resolve()
-        ttsSource!.start()
-      })
-
-      // Lip sync during playback (background)
-      let elapsed = 0
-      const dur = pcm!.length / 16000 * 1000
+      // Start lip sync BEFORE playback, using real AudioContext time
+      const startTime = audioCtx.currentTime
       const lipIv = setInterval(() => {
-        elapsed += 60
+        if (!audioCtx) { clearInterval(lipIv); return }
+        const elapsed = (audioCtx.currentTime - startTime) * 1000 // ms
         const idx = Math.floor((elapsed / 1000) * 16000)
-        if (idx >= pcm!.length) { clearInterval(lipIv); return }
-        const start_ = Math.max(0, idx - 480), end_ = Math.min(pcm!.length, idx + 480)
-        let sum = 0; for (let j = start_; j < end_; j++) sum += pcm![j] * pcm![j]
-        const rms = Math.sqrt(sum / (end_ - start_))
+        if (idx >= pcm!.length) { clearInterval(lipIv); invoke('set_lip_level', { level: 0 }).catch(() => {}); return }
+        const s = Math.max(0, idx - 480), e = Math.min(pcm!.length, idx + 480)
+        let sum = 0; for (let j = s; j < e; j++) sum += pcm![j] * pcm![j]
+        const rms = Math.sqrt(sum / (e - s))
         invoke('set_lip_level', { level: Math.min(rms * 3, 1.0) }).catch(() => {})
-      }, 60)
-      // Clean up lip timer when chunk ends
-      setTimeout(() => { clearInterval(lipIv); invoke('set_lip_level', { level: 0 }).catch(() => {}) }, dur + 100)
+      }, 40)
+
+      // Wait for playback to finish
+      await new Promise<void>(resolve => { ttsSource!.onended = () => resolve(); ttsSource!.start() })
+
+      // Cleanup
+      clearInterval(lipIv)
+      invoke('set_lip_level', { level: 0 }).catch(() => {})
     }
 
     playingId.value = null
