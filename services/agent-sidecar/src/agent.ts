@@ -38,11 +38,11 @@ export interface AgentCallbacks {
 
 // ── Web tools (powered by @oh-my-pi/pi-coding-agent) ────────────────────
 
-/** Search the web using omp's multi-provider search (Brave, Perplexity, SearXNG, etc.). */
+/** Search the web via DuckDuckGo (free, zero config). Always works. */
 const WEB_SEARCH_TOOL: AgentTool = {
     name: "web_search",
     label: "Web Search",
-    description: "Search the internet for current information. Supports multiple search providers configured in ~/.omp/agent/.",
+    description: "Search the internet using DuckDuckGo. Call this whenever you need current or factual information. Works without any API keys — just call it.",
     parameters: {
         type: "object",
         properties: {
@@ -114,7 +114,7 @@ export class AgentManager {
     private createAgent(): Agent {
         const agent = new Agent({
             initialState: {
-                systemPrompt: ["You are Companion, a helpful cross-platform desktop AI assistant. You have TWO tools available: web_search and web_fetch. Use them for ANY question about current events, facts you're unsure about, news, or web content. NEVER say you cannot access the internet or search the web — you can, just call web_search. If the user asks something you don't know, search first."],
+                systemPrompt: ["You are Companion. You can search the web — call web_search(query) for any question you don't know the answer to. web_search uses DuckDuckGo and requires no API key. You also have web_fetch(url) to read specific pages. RULE: if the user asks about current events, facts, news, or anything you're unsure about, call web_search. Do NOT say you can't search — just call the tool."],
                 model: this.model as any,
             },
             getApiKey: () => this.apiKey,
