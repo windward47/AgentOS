@@ -179,10 +179,11 @@ async function startBackgroundVAD() {
 onMounted(() => {
   startBackgroundVAD()
   // Load voice preferences from config
-  invoke<{ voice_mode: string; tts_voice: string; tts_speed: number }>('get_config').then(c => {
+  invoke<{ voice_mode: string; tts_voice: string; tts_speed: number; tts_auto_play: boolean }>('get_config').then(c => {
     if (c.voice_mode === 'auto' || c.voice_mode === 'ptt') voiceMode.value = c.voice_mode
     if (c.tts_voice) ttsVoice.value = c.tts_voice
     if (c.tts_speed) ttsSpeed.value = c.tts_speed
+    if (c.tts_auto_play !== undefined) ttsAuto.value = c.tts_auto_play
   }).catch(() => {})
 })
 

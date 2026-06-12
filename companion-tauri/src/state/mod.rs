@@ -221,14 +221,21 @@ pub async fn clear_history(agent: tauri::State<'_, AgentState>) -> Result<(), St
     Ok(())
 }
 
+fn ensure_chat_completions_url(url: &str) -> String {
+    if url.contains("/chat/completions") { url.to_string() }
+    else { format!("{}/chat/completions", url.trim_end_matches('/')) }
+}
+
 #[tauri::command]
 pub async fn transcribe_audio(
     config: tauri::State<'_, ConfigState>,
     audio: Vec<f32>,
 ) -> Result<String, String> {
     let cfg = config.config.lock().await;
-    let base_url = cfg.asr.url.clone().unwrap_or_else(||
-        "https://token-plan-cn.xiaomimimo.com/v1/chat/completions".into()
+    let base_url = ensure_chat_completions_url(
+        &cfg.asr.url.clone().unwrap_or_else(||
+            "https://token-plan-cn.xiaomimimo.com/v1".into()
+        )
     );
     let api_key = resolve_provider_key(&cfg.asr, &cfg.default_api_key);
     let asr = companion_core::asr::xiaomi_asr::XiaomiAsr::with_url(&api_key, &base_url);
@@ -245,11 +252,13 @@ pub async fn synthesize_audio(
 ) -> Result<Vec<f32>, String> {
     let cfg = config.config.lock().await;
     let v = voice.unwrap_or_else(|| cfg.tts_voice.clone());
-    let base_url = cfg.tts.url.clone().unwrap_or_else(||
-        "https://token-plan-cn.xiaomimimo.com/v1/chat/completions".into()
+    let baser_url = ensure_chat_completions_url(
+        &cfg.tts.url.clone().unwrap_or_else(||
+            "https://token-plan-cn.xiaomimimo.com/v1".into()
+        )
     );
     let api_key = resolve_provider_key(&cfg.tts, &cfg.default_api_key);
-    let tts = companion_core::tts::xiaomi_tts::XiaomiTts::with_url(&api_key, &v, &base_url);
+    let tts = companion_core::tts::xiaomi_tts::XiaomiTts::with_url(&api_key, &v, &baser_url);
     tts.synthesize(&text)
         .await
         .map_err(|e| format!("TTS error: {e}"))

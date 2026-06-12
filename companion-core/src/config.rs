@@ -27,15 +27,15 @@ pub struct CompanionConfig {
     #[serde(default = "default_sandbox_path")]
     pub sandbox_path: PathBuf,
 
-    /// LLM provider: "openai" | "ollama" | "claude"
+    /// LLM provider: "siliconflow" | "xiaomi" | "custom"
     #[serde(default = "default_llm")]
     pub llm_provider: String,
 
-    /// ASR provider: "local" | "cloud"
+    /// ASR provider: "xiaomi" | "custom"
     #[serde(default = "default_asr")]
     pub asr_provider: String,
 
-    /// TTS provider: "local" | "cloud"
+    /// TTS provider: "xiaomi" | "custom"
     #[serde(default = "default_tts")]
     pub tts_provider: String,
 
@@ -153,8 +153,8 @@ fn default_sandbox_path() -> PathBuf {
 }
 
 fn default_llm() -> String { "siliconflow".into() }
-fn default_asr() -> String { "local".into() }
-fn default_tts() -> String { "local".into() }
+fn default_asr() -> String { "xiaomi".into() }
+fn default_tts() -> String { "xiaomi".into() }
 fn default_vad_threshold() -> f32 { 0.3 }
 fn default_voice_mode() -> String { "ptt".into() }
 fn default_tts_voice() -> String { "茉莉".into() }

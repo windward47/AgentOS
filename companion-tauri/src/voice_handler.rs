@@ -265,11 +265,12 @@ pub fn build_global_asr_engines(
 
     // Mimo ASR (Xiaomi)
     if !api_token.is_empty() {
-        let base_url = cfg
+        let base = cfg
             .asr
             .url
             .clone()
-            .unwrap_or_else(|| "https://token-plan-cn.xiaomimimo.com/v1/chat/completions".into());
+            .unwrap_or_else(|| "https://token-plan-cn.xiaomimimo.com/v1".into());
+        let base_url = if base.contains("/chat/completions") { base } else { format!("{}/chat/completions", base.trim_end_matches('/')) };
         log::info!("[GlobalVoice] Registering Mimo ASR engine");
         engines.insert("mimo".into(), Box::new(XiaomiAsr::with_url(&api_token, &base_url)));
     }
