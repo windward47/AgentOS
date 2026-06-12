@@ -71,6 +71,7 @@ document.addEventListener('dblclick', () => {
 
 async function init() {
   app = new PIXI.Application({ width: innerWidth, height: innerHeight, backgroundAlpha: 0, antialias: true, resolution: devicePixelRatio || 1, autoDensity: true });
+  app.ticker.maxFPS = 30;
   document.getElementById('root')!.appendChild(app.view as HTMLCanvasElement);
   Live2DModel.registerTicker(PIXI.Ticker);
   model = await Live2DModel.from(MODEL, { autoUpdate: true, autoInteract: false });
