@@ -232,14 +232,15 @@ pub async fn transcribe_audio(
 ) -> Result<String, String> {
     let cfg = config.config.lock().await;
     let token = resolve_api_token(&cfg);
-    let asr = if cfg.asr_provider == "custom" && cfg.asr_custom_url.is_some() {
+    let asr = if cfg.asr_provider == "custom" && cfg.asr.url.is_some() {
         let key = cfg
-            .asr_custom_key
+            .asr
+            .key
             .clone()
             .unwrap_or_else(|| token.clone());
         companion_core::asr::xiaomi_asr::XiaomiAsr::with_url(
             &key,
-            cfg.asr_custom_url.as_deref().unwrap_or(""),
+            cfg.asr.url.as_deref().unwrap_or(""),
         )
     } else {
         companion_core::asr::xiaomi_asr::XiaomiAsr::new(&token)
@@ -257,16 +258,17 @@ pub async fn synthesize_audio(
 ) -> Result<Vec<f32>, String> {
     let cfg = config.config.lock().await;
     let v = voice.unwrap_or_else(|| "茉莉".into());
-    let tts = if cfg.tts_provider == "custom" && cfg.tts_custom_url.is_some() {
+    let tts = if cfg.tts_provider == "custom" && cfg.tts.url.is_some() {
         let key = cfg
-            .tts_custom_key
+            .tts
+            .key
             .as_deref()
             .map(String::from)
             .unwrap_or_else(|| resolve_api_token(&cfg));
         companion_core::tts::xiaomi_tts::XiaomiTts::with_url(
             &key,
             &v,
-            cfg.tts_custom_url.as_deref().unwrap_or(""),
+            cfg.tts.url.as_deref().unwrap_or(""),
         )
     } else {
         let token = resolve_api_token(&cfg);

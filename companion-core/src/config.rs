@@ -4,6 +4,20 @@ use std::fs;
 use std::path::PathBuf;
 use thiserror::Error;
 
+/// Provider-specific overrides (URL, API key, model name).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ProviderConfig {
+    /// Custom API endpoint URL (overrides default).
+    #[serde(default)]
+    pub url: Option<String>,
+    /// Custom API key (overrides default token).
+    #[serde(default)]
+    pub key: Option<String>,
+    /// Custom model name (overrides default model).
+    #[serde(default)]
+    pub model: Option<String>,
+}
+
 /// Top-level configuration for Companion.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompanionConfig {
@@ -63,27 +77,13 @@ pub struct CompanionConfig {
     #[serde(default)]
     pub api_token: Option<String>,
 
-    // ── Custom provider overrides ──
+    // ── Provider-specific overrides ──
     #[serde(default)]
-    pub llm_custom_url: Option<String>,
+    pub llm: ProviderConfig,
     #[serde(default)]
-    pub llm_custom_key: Option<String>,
+    pub asr: ProviderConfig,
     #[serde(default)]
-    pub llm_custom_model: Option<String>,
-
-    #[serde(default)]
-    pub asr_custom_url: Option<String>,
-    #[serde(default)]
-    pub asr_custom_key: Option<String>,
-    #[serde(default)]
-    pub asr_custom_model: Option<String>,
-
-    #[serde(default)]
-    pub tts_custom_url: Option<String>,
-    #[serde(default)]
-    pub tts_custom_key: Option<String>,
-    #[serde(default)]
-    pub tts_custom_model: Option<String>,
+    pub tts: ProviderConfig,
 
     // ── Global voice (system-tray hotkey ASR/TTS) ──
     #[serde(default)]
@@ -176,9 +176,9 @@ impl Default for CompanionConfig {
             custom_system_prompt: None,
             emotion_mapping: HashMap::new(),
             api_token: None,
-            llm_custom_url: None, llm_custom_key: None, llm_custom_model: None,
-            asr_custom_url: None, asr_custom_key: None, asr_custom_model: None,
-            tts_custom_url: None, tts_custom_key: None, tts_custom_model: None,
+            llm: ProviderConfig::default(),
+            asr: ProviderConfig::default(),
+            tts: ProviderConfig::default(),
             global_voice: GlobalVoiceConfig::default(),
         }
     }

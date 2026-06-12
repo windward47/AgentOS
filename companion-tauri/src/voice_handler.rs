@@ -262,7 +262,8 @@ pub fn build_global_asr_engines(
     // Mimo ASR (Xiaomi)
     if !api_token.is_empty() {
         let base_url = cfg
-            .asr_custom_url
+            .asr
+            .url
             .clone()
             .unwrap_or_else(|| "https://token-plan-cn.xiaomimimo.com/v1/chat/completions".into());
         log::info!("[GlobalVoice] Registering Mimo ASR engine");
@@ -276,8 +277,8 @@ pub fn build_global_asr_engines(
     }
 
     // Aliyun ASR
-    if let Some(key) = &cfg.asr_custom_key {
-        if let Some(_model) = &cfg.asr_custom_model {
+    if let Some(key) = &cfg.asr.key {
+        if let Some(_model) = &cfg.asr.model {
             if let Some((appkey, token)) = key.split_once(':') {
                 log::info!("[GlobalVoice] Registering Aliyun ASR engine");
                 engines.insert("aliyun".into(), Box::new(AliyunAsr::new(appkey, token)));
@@ -286,10 +287,11 @@ pub fn build_global_asr_engines(
     }
 
     // Whisper Local (if binary and model are configured)
-    if let Some(path_str) = &cfg.asr_custom_url {
+    if let Some(path_str) = &cfg.asr.url {
         let binary_path = std::path::PathBuf::from(path_str);
         let model_path = cfg
-            .asr_custom_model
+            .asr
+            .model
             .as_ref()
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {
