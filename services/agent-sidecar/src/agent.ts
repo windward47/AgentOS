@@ -114,7 +114,7 @@ export class AgentManager {
     private createAgent(): Agent {
         const agent = new Agent({
             initialState: {
-                systemPrompt: ["You are Companion. You can search the web — call web_search(query) for any question you don't know the answer to. web_search uses DuckDuckGo and requires no API key. You also have web_fetch(url) to read specific pages. RULE: if the user asks about current events, facts, news, or anything you're unsure about, call web_search. Do NOT say you can't search — just call the tool."],
+                systemPrompt: ["Companion — a helpful desktop AI assistant."],
                 model: this.model as any,
             },
             getApiKey: () => this.apiKey,
@@ -171,7 +171,7 @@ export class AgentManager {
     }
 
     async chat(message: string, history?: Array<{ role: string; content: string }>, systemPrompt?: string): Promise<string> {
-        if (systemPrompt) this.agent.setSystemPrompt([systemPrompt]);
+        if (systemPrompt && systemPrompt.length > 0) this.agent.setSystemPrompt([systemPrompt]);
         // Only clear if explicit clear is requested (via clearHistory from Rust)
         // pi-agent-core's Agent internally manages conversation state across turns.
 

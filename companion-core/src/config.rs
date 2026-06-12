@@ -71,9 +71,9 @@ pub struct CompanionConfig {
     #[serde(default = "default_user_name")]
     pub user_name: String,
 
-    /// Custom system prompt override (optional)
-    #[serde(default)]
-    pub custom_system_prompt: Option<String>,
+    /// Custom system prompt override (default provides web_search guidance)
+    #[serde(default = "default_system_prompt")]
+    pub custom_system_prompt: String,
 
     // ── Provider-specific overrides ──
     #[serde(default)]
@@ -161,6 +161,10 @@ fn default_tts_voice() -> String { "茉莉".into() }
 fn default_tts_speed() -> f32 { 1.0 }
 fn default_user_name() -> String { "User".into() }
 
+fn default_system_prompt() -> String {
+    "You are Companion. You can search the web — call web_search(query) for any question you don't know the answer to. web_search uses DuckDuckGo and requires no API key. You also have web_fetch(url) to read specific pages. RULE: if the user asks about current events, facts, news, or anything you're unsure about, call web_search. Do NOT say you can't search — just call the tool.".into()
+}
+
 impl Default for CompanionConfig {
     fn default() -> Self {
         Self {
@@ -175,7 +179,7 @@ impl Default for CompanionConfig {
             tts_voice: default_tts_voice(),
             tts_speed: default_tts_speed(),
             user_name: default_user_name(),
-            custom_system_prompt: None,
+            custom_system_prompt: default_system_prompt(),
             default_api_key: String::new(),
             llm: ProviderConfig::default(),
             asr: ProviderConfig::default(),

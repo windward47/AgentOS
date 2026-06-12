@@ -141,7 +141,7 @@ pub async fn chat(
     };
     let response = agent
         .agent
-        .chat(&message, &history_snapshot, config.config.lock().await.custom_system_prompt.as_deref())
+        .chat(&message, &history_snapshot, Some(&config.config.lock().await.custom_system_prompt))
         .await
         .map_err(|e| format!("Agent error: {e}"))?;
     {
@@ -182,7 +182,7 @@ pub async fn chat_with_tools(
     };
     let response = agent
         .agent
-        .chat(&message, &history_snapshot, config.config.lock().await.custom_system_prompt.as_deref())
+        .chat(&message, &history_snapshot, Some(&config.config.lock().await.custom_system_prompt))
         .await
         .map_err(|e| format!("Agent error: {e}"))?;
     {
