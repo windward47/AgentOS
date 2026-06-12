@@ -8,7 +8,7 @@ export default defineConfig({
   clearScreen: false,
   server: {
     port: 5173, strictPort: true,
-    watch: { ignored: ['**/src-tauri/**'] },
+    watch: { ignored: ['**/src-tauri/**', '**/companion-core/**', '**/companion-tauri/**'] },
   },
   build: {
     rollupOptions: {

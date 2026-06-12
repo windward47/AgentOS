@@ -1,22 +1,20 @@
 //! Agent core abstraction — pluggable backend for LLM orchestration and tool calling.
 //!
 //! Defines the [`AgentEngine`] trait and provides implementations that delegate
-//! to external agent backends such as **oh-my-pi** (`omp --mode rpc`).
+//! to external agent backends via a persistent Bun sidecar (NDJSON JSON-RPC).
 //!
 //! ## Architecture
 //!
 //! ```text
 //! Companion (Tauri backend)
 //!   └── agent::AgentEngine trait
-//!         ├── OmpRpcClient    ← oh-my-pi RPC subprocess (recommended)
-//!         └── DirectLlm       ← fallback: direct LLM API (no tool orchestration)
+//!         └── OmpAgentSidecar    ← Bun sidecar (NDJSON JSON-RPC over stdio)
 //! ```
 //!
 //! The [`AgentEngine`] abstracts over conversation management, tool selection,
 //! and LLM invocation — so Companion's upper layers (perception, presentation)
 //! never interact with the LLM or tools directly.
 
-pub mod omp_rpc;
 pub mod omp_sidecar;
 
 use async_trait::async_trait;
@@ -88,4 +86,13 @@ pub enum AgentError {
     AgentReturnedError(String),
     #[error("timeout waiting for agent response")]
     Timeout,
+}
+
+/// Map `CompanionConfig::llm_provider` value to an omp `--model` argument.
+pub fn provider_to_model(provider: &str) -> &'static str {
+    match provider {
+        "siliconflow" => "sensenova/mimo-v2.5",
+        "xiaomi" => "sensenova/mimo-v2.5-pro",
+        _ => "sensenova/mimo-v2.5",
+    }
 }

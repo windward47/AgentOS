@@ -11,17 +11,17 @@ HEADED=""
 echo "=== Companion Verification ==="
 echo ""
 
-# 1. Rust check
+# 1. Rust check (workspace)
 echo -n "  cargo check ........ "
-if (cd src-tauri && cargo check 2>&1 | grep -q "error\["); then echo -e "$FAIL"; else echo -e "$PASS"; fi
+if (cargo check 2>&1 | grep -q "error\["); then echo -e "$FAIL"; else echo -e "$PASS"; fi
 
-# 2. Rust unit tests
+# 2. Rust unit tests (companion-core)
 echo -n "  cargo test --lib ... "
-if (cd src-tauri && cargo test --lib 2>&1 | grep -q "test result: ok"); then echo -e "$PASS (10/10)"; else echo -e "$FAIL"; fi
+if (cargo test -p companion-core --lib 2>&1 | grep -q "test result: ok"); then echo -e "$PASS (20/20)"; else echo -e "$FAIL"; fi
 
-# 3. Rust e2e tests
+# 3. Rust e2e tests (companion-core)
 echo -n "  cargo test e2e ..... "
-if (cd src-tauri && cargo test --test e2e_tests 2>&1 | grep -q "test result: ok"); then echo -e "$PASS (3/3)"; else echo -e "$FAIL"; fi
+if (cargo test -p companion-core --test e2e_tests 2>&1 | grep -q "test result: ok"); then echo -e "$PASS (3/3)"; else echo -e "$FAIL"; fi
 
 # 4. Frontend build
 echo -n "  npm run build ...... "
