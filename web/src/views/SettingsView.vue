@@ -10,24 +10,24 @@ const saving = ref(false)
 const saved = ref(false)
 
 onMounted(async () => {
-  try { config.value = await invoke<CompanionConfig>('get_config') } catch {
-    config.value = {
-      sandbox_path: '~/.companion/sandbox',
-      llm_provider: 'siliconflow', asr_provider: 'xiaomi', tts_provider: 'xiaomi',
-      system_mode: false, tts_auto_play: false, vad_threshold: 0.3,
-      user_name: 'User', custom_system_prompt: null, default_api_key: '',
-      voice_mode: 'ptt', tts_voice: '茉莉', tts_speed: 1.0,
-      llm: { provider: '', url: null, key: null, model: null },
-      asr: { provider: '', url: null, key: null, model: null },
-      tts: { provider: '', url: null, key: null, model: null },
-      custom_providers: [],
-      global_voice: {
-        record_hotkey: 'Alt+`', tts_hotkey: 'Alt+T',
-        inject_mode_switch_hotkey: 'Alt+Shift+V', engine_switch_hotkey: 'Alt+Shift+E',
-        inject_mode: 'keyboard', asr_engine: 'mimo', tts_engine: 'mimo-tts',
-      },
-    }
+  // Show form immediately with defaults (avoid "Loading..." flash)
+  config.value = {
+    sandbox_path: '~/.companion/sandbox',
+    llm_provider: 'siliconflow', asr_provider: 'xiaomi', tts_provider: 'xiaomi',
+    system_mode: false, tts_auto_play: false, vad_threshold: 0.3,
+    user_name: 'User', custom_system_prompt: null, default_api_key: '',
+    voice_mode: 'ptt', tts_voice: '茉莉', tts_speed: 1.0,
+    llm: { provider: '', url: null, key: null, model: null },
+    asr: { provider: '', url: null, key: null, model: null },
+    tts: { provider: '', url: null, key: null, model: null },
+    custom_providers: [],
+    global_voice: {
+      record_hotkey: 'Alt+`', tts_hotkey: 'Alt+T',
+      inject_mode_switch_hotkey: 'Alt+Shift+V', engine_switch_hotkey: 'Alt+Shift+E',
+      inject_mode: 'keyboard', asr_engine: 'mimo', tts_engine: 'mimo-tts',
+    },
   }
+  try { config.value = await invoke<CompanionConfig>('get_config') } catch {}
   // Pre-fill provider fields for any preset that is selected
   if (config.value) {
     onProviderChange('llm')
@@ -124,9 +124,7 @@ function onProviderChange(kind: 'llm' | 'asr' | 'tts') {
       </div>
     </div>
 
-    <div v-if="!config" class="flex-1 flex items-center justify-center text-gray-400">Loading...</div>
-
-    <div v-else class="max-w-2xl mx-auto w-full px-6 py-6 space-y-6">
+    <div class="max-w-2xl mx-auto w-full px-6 py-6 space-y-6">
 
       <!-- ── AI Providers ── -->
       <section class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
