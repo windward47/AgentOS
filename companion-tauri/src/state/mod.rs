@@ -13,6 +13,7 @@ use companion_core::tools::ToolRegistry;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tauri::Manager;
 
 // ── AgentState ──────────────────────────────────────────────────────────
 
@@ -337,6 +338,55 @@ pub async fn get_voice_state(voice: tauri::State<'_, VoiceState>) -> Result<Stri
     };
     log::debug!("get_voice_state → {}", s);
     Ok(s.into())
+}
+
+/// Show or hide the avatar (Live2D) window.
+#[tauri::command]
+pub async fn set_avatar_visible(app: tauri::AppHandle, visible: bool) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("avatar") {
+        if visible {
+            win.show().map_err(|e| format!("show avatar: {e}"))?;
+        } else {
+            win.hide().map_err(|e| format!("hide avatar: {e}"))?;
+        }
+    }
+    Ok(())
+}
+
+/// Returns whether the avatar window is visible.
+#[tauri::command]
+pub async fn get_avatar_visible(app: tauri::AppHandle) -> Result<bool, String> {
+    match app.get_webview_window("avatar") {
+        Some(win) => win.is_visible().map_err(|e| format!("avatar visible: {e}")),
+        None => Ok(false),
+    }
+}
+
+/// Toggle always-on-top for the avatar window.
+#[tauri::command]
+pub async fn set_avatar_always_on_top(app: tauri::AppHandle, on_top: bool) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("avatar") {
+        win.set_always_on_top(on_top)
+            .map_err(|e| format!("set always on top: {e}"))?;
+    }
+    Ok(())
+}
+
+/// Reset avatar window position to default.
+#[tauri::command]
+pub async fn reset_avatar_position(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("main") {
+        let main_size = win.outer_size().map_err(|e| format!("main size: {e}"))?;
+        if let Some(avatar) = app.get_webview_window("avatar") {
+            avatar
+                .set_position(tauri::PhysicalPosition::new(
+                    main_size.width as i32 + 100,
+                    100,
+                ))
+                .map_err(|e| format!("set avatar pos: {e}"))?;
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
