@@ -179,9 +179,10 @@ async function startBackgroundVAD() {
 onMounted(() => {
   startBackgroundVAD()
   // Load voice preferences from config
-  invoke<{ voice_mode: string; tts_voice: string }>('get_config').then(c => {
+  invoke<{ voice_mode: string; tts_voice: string; tts_speed: number }>('get_config').then(c => {
     if (c.voice_mode === 'auto' || c.voice_mode === 'ptt') voiceMode.value = c.voice_mode
     if (c.tts_voice) ttsVoice.value = c.tts_voice
+    if (c.tts_speed) ttsSpeed.value = c.tts_speed
   }).catch(() => {})
 })
 
@@ -458,11 +459,18 @@ onBeforeUnmount(() => {
   ;(interruptRecorder as any)?.stop()
 })
 
-// Persist TTS voice changes to config
+// Persist TTS voice + speed changes to config
 watch(ttsVoice, async (val) => {
   try {
     const config = await invoke<any>('get_config')
     config.tts_voice = val
+    await invoke('update_config', { config })
+  } catch {}
+})
+watch(ttsSpeed, async (val) => {
+  try {
+    const config = await invoke<any>('get_config')
+    config.tts_speed = val
     await invoke('update_config', { config })
   } catch {}
 })
