@@ -13,6 +13,77 @@ export interface AgentCallbacks {
     onError: (message: string) => void;
 }
 
+// ── Web tools ──────────────────────────────────────────────────────────
+
+/** Search the web via DuckDuckGo instant answer API (free, no API key). */
+const WEB_SEARCH_TOOL: AgentTool = {
+    name: "web_search",
+    label: "Web Search",
+    description: "Search the internet for current information. Uses DuckDuckGo. Returns summaries and relevant links.",
+    parameters: {
+        type: "object",
+        properties: {
+            query: { type: "string", description: "Search query" },
+        },
+        required: ["query"],
+    },
+    execute: async (_toolCallId: string, params: any) => {
+        const query = encodeURIComponent(params.query ?? "");
+        try {
+            const resp = await fetch(`https://api.duckduckgo.com/?q=${query}&format=json`);
+            const data: any = await resp.json();
+            let text = "";
+            if (data.AbstractText) text += `Summary: ${data.AbstractText}\n`;
+            if (data.AbstractURL) text += `Source: ${data.AbstractURL}\n`;
+            if (data.RelatedTopics?.length) {
+                text += "\nRelated:\n";
+                for (const t of data.RelatedTopics.slice(0, 5)) {
+                    if (t.Text) text += `- ${t.Text}\n`;
+                }
+            }
+            if (!text) text = `No instant answer found for "${params.query}". Try web_fetch to open specific pages.`;
+            return { content: [{ type: "text" as const, text: text.trim() }] };
+        } catch (err: any) {
+            return { content: [{ type: "text" as const, text: `Search failed: ${err.message}` }] };
+        }
+    },
+};
+
+/** Fetch and read the text content of a URL. */
+const WEB_FETCH_TOOL: AgentTool = {
+    name: "web_fetch",
+    label: "Web Fetch",
+    description: "Fetch and read the text content of a specific URL. Use this when you need detailed info from a known page.",
+    parameters: {
+        type: "object",
+        properties: {
+            url: { type: "string", description: "Full URL to fetch (e.g. https://example.com/page)" },
+        },
+        required: ["url"],
+    },
+    execute: async (_toolCallId: string, params: any) => {
+        const url = String(params.url ?? "");
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            return { content: [{ type: "text" as const, text: "Only http:// and https:// URLs are allowed." }] };
+        }
+        try {
+            const resp = await fetch(url, { signal: AbortSignal.timeout(15000) });
+            const html = await resp.text();
+            // Basic HTML-to-text: strip tags, condense whitespace
+            const text = html
+                .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+                .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+                .replace(/<[^>]+>/g, " ")
+                .replace(/\s+/g, " ")
+                .trim()
+                .slice(0, 8000);
+            return { content: [{ type: "text" as const, text: text || "(empty page)" }] };
+        } catch (err: any) {
+            return { content: [{ type: "text" as const, text: `Fetch failed: ${err.message}` }] };
+        }
+    },
+};
+
 export class AgentManager {
     private agent: Agent;
     private model: Model<Api>;
@@ -34,13 +105,15 @@ export class AgentManager {
     }
 
     private createAgent(): Agent {
-        return new Agent({
+        const agent = new Agent({
             initialState: {
-                systemPrompt: ["You are Companion, a helpful cross-platform desktop AI assistant."],
+                systemPrompt: ["You are Companion, a helpful cross-platform desktop AI assistant. You have access to web_search and web_fetch tools — use them when the user asks for current information, news, or web content."],
                 model: this.model as any,
             },
             getApiKey: () => this.apiKey,
         });
+        agent.setTools([WEB_SEARCH_TOOL, WEB_FETCH_TOOL]);
+        return agent;
     }
 
     getModelInfo(): { provider: string; model: string } {
