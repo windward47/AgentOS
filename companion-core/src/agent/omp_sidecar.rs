@@ -282,6 +282,12 @@ impl OmpAgentSidecar {
     pub async fn get_model_info(&self) -> Option<Value> {
         self.model_info.lock().await.clone()
     }
+
+    /// Tell the sidecar to clear its conversation history.
+    pub async fn clear_history(&self) -> Result<(), AgentError> {
+        self.send_request("clear_history", None).await?;
+        Ok(())
+    }
 }
 
 #[async_trait]

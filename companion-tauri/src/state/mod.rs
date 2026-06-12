@@ -223,6 +223,9 @@ pub async fn get_history(
 #[tauri::command]
 pub async fn clear_history(agent: tauri::State<'_, AgentState>) -> Result<(), String> {
     agent.history.lock().await.clear();
+    if agent.agent.is_running().await {
+        agent.agent.clear_history().await.map_err(|e| format!("clear history: {e}"))?;
+    }
     Ok(())
 }
 

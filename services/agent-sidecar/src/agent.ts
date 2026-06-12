@@ -159,7 +159,8 @@ export class AgentManager {
 
     async chat(message: string, history?: Array<{ role: string; content: string }>, systemPrompt?: string): Promise<string> {
         if (systemPrompt) this.agent.setSystemPrompt([systemPrompt]);
-        if (history && history.length > 0) this.agent.clearMessages();
+        // Only clear if explicit clear is requested (via clearHistory from Rust)
+        // pi-agent-core's Agent internally manages conversation state across turns.
 
         return new Promise<string>((resolve, reject) => {
             let fullText = "";
