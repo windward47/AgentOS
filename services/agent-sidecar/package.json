@@ -9,8 +9,9 @@
     "@oh-my-pi/pi-agent-core": "15.10.12",
     "@oh-my-pi/pi-ai": "15.10.12",
     "@oh-my-pi/pi-catalog": "15.10.12",
-    "@oh-my-pi/pi-utils": "15.10.12",
+    "@oh-my-pi/pi-coding-agent": "15.10.12",
     "@oh-my-pi/pi-natives": "15.10.12",
+    "@oh-my-pi/pi-utils": "15.10.12",
     "js-yaml": "^4.2.0"
   },
   "devDependencies": {

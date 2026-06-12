@@ -4,6 +4,7 @@
 import { Agent, type AgentEvent, type AgentTool } from "@oh-my-pi/pi-agent-core";
 import type { Api, Model } from "@oh-my-pi/pi-ai";
 import { buildPiModel, loadConfig, resolveModelRole } from "./config";
+import { runSearchQuery } from "@oh-my-pi/pi-coding-agent/web/search";
 
 export interface AgentCallbacks {
     onToken: (token: string) => void;
@@ -13,41 +14,34 @@ export interface AgentCallbacks {
     onError: (message: string) => void;
 }
 
-// ── Web tools ──────────────────────────────────────────────────────────
+// ── Web tools (powered by @oh-my-pi/pi-coding-agent) ────────────────────
 
-/** Search the web via DuckDuckGo instant answer API (free, no API key). */
+/** Search the web using omp's multi-provider search (Brave, Perplexity, SearXNG, etc.). */
 const WEB_SEARCH_TOOL: AgentTool = {
     name: "web_search",
     label: "Web Search",
-    description: "Search the internet for current information. Uses DuckDuckGo. Returns summaries and relevant links.",
+    description: "Search the internet for current information. Supports multiple search providers configured in ~/.omp/agent/.",
     parameters: {
         type: "object",
         properties: {
             query: { type: "string", description: "Search query" },
+            limit: { type: "number", description: "Max results (optional)" },
         },
         required: ["query"],
     },
     execute: async (_toolCallId: string, params: any) => {
-        const query = encodeURIComponent(params.query ?? "");
         try {
-            const resp = await fetch(`https://api.duckduckgo.com/?q=${query}&format=json`);
-            const data: any = await resp.json();
-            let text = "";
-            if (data.AbstractText) text += `Summary: ${data.AbstractText}\n`;
-            if (data.AbstractURL) text += `Source: ${data.AbstractURL}\n`;
-            if (data.RelatedTopics?.length) {
-                text += "\nRelated:\n";
-                for (const t of data.RelatedTopics.slice(0, 5)) {
-                    if (t.Text) text += `- ${t.Text}\n`;
-                }
-            }
-            if (!text) text = `No instant answer found for "${params.query}". Try web_fetch to open specific pages.`;
-            return { content: [{ type: "text" as const, text: text.trim() }] };
+            const result = await runSearchQuery({
+                query: params.query,
+                limit: params.limit ?? 5,
+            });
+            return { content: result.content };
         } catch (err: any) {
             return { content: [{ type: "text" as const, text: `Search failed: ${err.message}` }] };
         }
     },
 };
+
 
 /** Fetch and read the text content of a URL. */
 const WEB_FETCH_TOOL: AgentTool = {
