@@ -43,17 +43,17 @@ function go(to: string) { router.push(to) }
           <span class="text-base">💬</span>
           <span v-if="!collapsed">Chat</span>
         </button>
-        <button @click="go('/settings')"
-          :class="['flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors',
-                   active === 'settings' ? 'bg-white shadow-sm ring-1 ring-gray-200 text-gray-900 font-medium' : 'text-gray-600 hover:bg-white/60']">
-          <span class="text-base">⚙️</span>
-          <span v-if="!collapsed">Settings</span>
-        </button>
         <button @click="go('/live2d')"
           :class="['flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors',
                    active === 'live2d' ? 'bg-white shadow-sm ring-1 ring-gray-200 text-gray-900 font-medium' : 'text-gray-600 hover:bg-white/60']">
           <span class="text-base">🧑</span>
           <span v-if="!collapsed">Live2D</span>
+        </button>
+        <button @click="go('/settings')"
+          :class="['flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors',
+                   active === 'settings' ? 'bg-white shadow-sm ring-1 ring-gray-200 text-gray-900 font-medium' : 'text-gray-600 hover:bg-white/60']">
+          <span class="text-base">⚙️</span>
+          <span v-if="!collapsed">Settings</span>
         </button>
       </nav>
       <div class="px-2 py-3 border-t border-gray-200 space-y-1">
