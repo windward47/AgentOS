@@ -4,9 +4,8 @@
 import { Agent, type AgentEvent, type AgentTool } from "@oh-my-pi/pi-agent-core";
 import type { Api, Model } from "@oh-my-pi/pi-ai";
 import { buildPiModel, loadConfig, resolveModelRole } from "./config";
-import { runSearchQuery } from "@oh-my-pi/pi-coding-agent/web/search";
 
-// ── DuckDuckGo fallback (zero-config, always available) ───────────────
+// ── DuckDuckGo web search (zero-config, always available) ─────────────
 
 async function duckDuckGoSearch(query: string) {
     try {
@@ -53,22 +52,12 @@ const WEB_SEARCH_TOOL: AgentTool = {
         required: ["query"],
     },
     execute: async (_toolCallId: string, params: any) => {
-        try {
-            const result = await runSearchQuery({
-                query: params.query,
-                limit: params.limit ?? 5,
-            });
-            const text = result.content[0]?.text ?? "";
-            // If omp has no providers configured, fall back to DuckDuckGo
-            if (text.includes("No web search provider configured")) {
-                return await duckDuckGoSearch(params.query);
-            }
-            return { content: result.content };
-        } catch (err: any) {
-            return await duckDuckGoSearch(params.query);
-        }
+        return await duckDuckGoSearch(params.query);
     },
 };
+
+/** Search the web using omp's multi-provider search (Brave, Perplexity, SearXNG, etc.). */
+const WEB_SEARCH_TOOL_UNUSED: AgentTool = {
 
 
 
