@@ -245,45 +245,110 @@ onBeforeUnmount(() => { document.removeEventListener('keydown', onKeyDown) })
 // ── TTS with lip sync + interrupt ──
 const playingId = ref<number | null>(null)
 let audioCtx: AudioContext | null = null
-let lipTimer: ReturnType<typeof setInterval> | null = null
 let ttsLastAutoMs = 0
 let ttsSource: AudioBufferSourceNode | null = null
+
+/** Split text into speakable chunks (sentence boundaries, max ~200 chars each). */
+function chunkForTTS(text: string): string[] {
+  const chunks: string[] = []
+  const sentences = text.split(/(?<=[.。！？!?\n])\s*/)
+  let buf = ''
+  for (const s of sentences) {
+    if (!s.trim()) continue
+    if (buf.length + s.length > 200 && buf.length > 50) {
+      chunks.push(buf.trim())
+      buf = s
+    } else {
+      buf += s
+    }
+  }
+  if (buf.trim()) chunks.push(buf.trim())
+  return chunks.length > 0 ? chunks : [text.slice(0, 200)]
+}
 
 async function playTTS(text: string, msgIdx: number) {
   if (playingId.value === msgIdx) { stopTTS(); return }
   stopTTS()
   playingId.value = msgIdx
-  try {
-    const textForTTS = text.length > 400 ? text.slice(0, 400) + '…' : text
-    const pcm = await invoke<number[]>('synthesize_audio', { text: textForTTS, voice: ttsVoice.value })
-    if (!pcm || pcm.length === 0) { playingId.value = null; return }
-    if (!audioCtx) audioCtx = new AudioContext()
-    const buf = audioCtx.createBuffer(1, pcm.length, 16000)
-    const ch = buf.getChannelData(0)
-    for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i]
-    ttsSource = audioCtx.createBufferSource()
-    ttsSource.buffer = buf
-    ttsSource.playbackRate.value = ttsSpeed.value
-    ttsSource.connect(audioCtx.destination)
-    ttsSource.onended = () => { playingId.value = null; if (lipTimer) clearInterval(lipTimer); ttsSource = null }
-    ttsSource.start()
 
-    let elapsed = 0
-    lipTimer = setInterval(() => {
-      elapsed += 60
-      const idx = Math.floor((elapsed / 1000) * 16000)
-      if (idx >= pcm.length) { if (lipTimer) clearInterval(lipTimer); return }
-      const start = Math.max(0, idx - 480), end = Math.min(pcm.length, idx + 480)
-      let sum = 0; for (let i = start; i < end; i++) sum += pcm[i] * pcm[i]
-      const rms = Math.sqrt(sum / (end - start))
-      invoke('set_lip_level', { level: Math.min(rms * 3, 1.0) }).catch(() => {})
-    }, 60)
-  } catch (err: any) { showToast('TTS: ' + String(err)); console.error('TTS error:', err); playingId.value = null }
+  const chunks = chunkForTTS(text)
+  if (chunks.length === 0) { playingId.value = null; return }
+
+  try {
+    // Synthesize first chunk immediately
+    let pcm = await invoke<number[]>('synthesize_audio', { text: chunks[0], voice: ttsVoice.value })
+    if (!pcm || pcm.length === 0) { playingId.value = null; return }
+
+    // Start pre-fetching second chunk while playing first
+    let nextPcm: number[] | null = null
+    if (chunks.length > 1) {
+      invoke<number[]>('synthesize_audio', { text: chunks[1], voice: ttsVoice.value })
+        .then(p => { nextPcm = p }).catch(() => {})
+    }
+
+    for (let ci = 0; ci < chunks.length; ci++) {
+      // If not first chunk, wait for the pre-fetched PCM
+      if (ci > 0) {
+        const MAX_WAIT = 15000
+        const startWait = Date.now()
+        while (!nextPcm && (Date.now() - startWait) < MAX_WAIT) {
+          await new Promise(r => setTimeout(r, 50))
+        }
+        pcm = nextPcm!
+        if (!pcm || pcm.length === 0) break
+        // Pre-fetch next
+        nextPcm = null
+        if (ci + 1 < chunks.length) {
+          invoke<number[]>('synthesize_audio', { text: chunks[ci + 1], voice: ttsVoice.value })
+            .then(p => { nextPcm = p }).catch(() => {})
+        }
+      }
+
+      // If user stopped or switched to another message, abort
+      if (playingId.value !== msgIdx) return
+
+      if (!audioCtx) audioCtx = new AudioContext()
+      const buf = audioCtx.createBuffer(1, pcm!.length, 16000)
+      const ch = buf.getChannelData(0)
+      for (let i = 0; i < pcm!.length; i++) ch[i] = pcm![i]
+      ttsSource = audioCtx.createBufferSource()
+      ttsSource.buffer = buf
+      ttsSource.playbackRate.value = ttsSpeed.value
+      ttsSource.connect(audioCtx.destination)
+
+      // Wait for playback to finish before continuing to next chunk
+      await new Promise<void>(resolve => {
+        ttsSource!.onended = () => resolve()
+        ttsSource!.start()
+      })
+
+      // Lip sync during playback (background)
+      let elapsed = 0
+      const dur = pcm!.length / 16000 * 1000
+      const lipIv = setInterval(() => {
+        elapsed += 60
+        const idx = Math.floor((elapsed / 1000) * 16000)
+        if (idx >= pcm!.length) { clearInterval(lipIv); return }
+        const start_ = Math.max(0, idx - 480), end_ = Math.min(pcm!.length, idx + 480)
+        let sum = 0; for (let j = start_; j < end_; j++) sum += pcm![j] * pcm![j]
+        const rms = Math.sqrt(sum / (end_ - start_))
+        invoke('set_lip_level', { level: Math.min(rms * 3, 1.0) }).catch(() => {})
+      }, 60)
+      // Clean up lip timer when chunk ends
+      setTimeout(() => { clearInterval(lipIv); invoke('set_lip_level', { level: 0 }).catch(() => {}) }, dur + 100)
+    }
+
+    playingId.value = null
+    ttsSource = null
+  } catch (err: any) {
+    showToast('TTS: ' + String(err))
+    console.error('TTS error:', err)
+    playingId.value = null
+  }
 }
 
 function stopTTS() {
   if (ttsSource) { try { ttsSource.stop() } catch {}; ttsSource = null }
-  if (lipTimer) { clearInterval(lipTimer); lipTimer = null }
   if (audioCtx) { try { audioCtx.close() } catch {}; audioCtx = null }
   playingId.value = null
 }
