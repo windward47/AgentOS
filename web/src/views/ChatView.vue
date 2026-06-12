@@ -462,16 +462,16 @@ onBeforeUnmount(() => {
 // Persist TTS voice + speed changes to config
 watch(ttsVoice, async (val) => {
   try {
-    const config = await invoke<any>('get_config')
-    config.tts_voice = val
-    await invoke('update_config', { config })
+    const c = await invoke<any>('get_config')
+    c.tts_voice = val
+    await invoke('update_config', { newConfig: c })
   } catch {}
 })
 watch(ttsSpeed, async (val) => {
   try {
-    const config = await invoke<any>('get_config')
-    config.tts_speed = val
-    await invoke('update_config', { config })
+    const c = await invoke<any>('get_config')
+    c.tts_speed = val
+    await invoke('update_config', { newConfig: c })
   } catch {}
 })
 

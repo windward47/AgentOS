@@ -37,7 +37,7 @@ onMounted(async () => {
 async function save() {
   if (!config.value) return
   saving.value = true; saved.value = false
-  try { await invoke('update_config', { config: config.value }); saved.value = true; setTimeout(() => saved.value = false, 2000) }
+  try { await invoke('update_config', { newConfig: config.value }); saved.value = true; setTimeout(() => saved.value = false, 2000) }
   catch {} finally { saving.value = false }
 }
 
