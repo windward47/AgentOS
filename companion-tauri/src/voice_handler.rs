@@ -15,7 +15,7 @@ use companion_core::config::CompanionConfig;
 use tauri::Manager;
 use enigo::Keyboard;
 
-use crate::state::VoiceState;
+use crate::state::{VoiceState, ConfigState};
 
 /// Commands dispatched from hotkey listener or tray menu to the voice handler loop.
 pub enum VoiceCommand {
@@ -120,10 +120,13 @@ pub async fn handle_voice_command(
                 }
             };
 
-            let api_token = companion_core::config::ConfigManager::new()
-                .ok()
-                .and_then(|mgr| mgr.load().ok())
-                .and_then(|cfg| cfg.api_token.filter(|t| !t.is_empty()))
+            let api_token = app
+                .state::<ConfigState>()
+                .config
+                .lock()
+                .await
+                .api_token
+                .clone()
                 .or_else(|| std::env::var("COMPANION_API_TOKEN").ok())
                 .unwrap_or_default();
 
@@ -154,12 +157,14 @@ pub async fn handle_voice_command(
 
         VoiceCommand::SetAsrEngine(name) => {
             log::info!("[GlobalVoice] Switching ASR engine to: {}", name);
+            {
+                let state = app.state::<ConfigState>();
+                let mut cfg = state.config.lock().await;
+                cfg.global_voice.asr_engine = name.clone();
+                state.save().await;
+            }
             let mut guard = asr_engine_name.lock().unwrap();
             *guard = name;
-            if let Ok(mut cfg) = companion_core::config::ConfigManager::new().and_then(|m| m.load()) {
-                cfg.global_voice.asr_engine = guard.clone();
-                let _ = companion_core::config::ConfigManager::new().and_then(|m| m.save(&cfg));
-            }
         }
 
         VoiceCommand::SetInjectMode(mode_str) => {
@@ -169,9 +174,9 @@ pub async fn handle_voice_command(
                 "clipboard" => InjectMode::Clipboard,
                 _ => InjectMode::Keyboard,
             };
-            if let Ok(mut cfg) = companion_core::config::ConfigManager::new().and_then(|m| m.load()) {
+            { let state = app.state::<ConfigState>(); let mut cfg = state.config.lock().await;
                 cfg.global_voice.inject_mode = mode_str;
-                let _ = companion_core::config::ConfigManager::new().and_then(|m| m.save(&cfg));
+                state.save().await;
             }
         }
 
@@ -180,9 +185,9 @@ pub async fn handle_voice_command(
             *guard = guard.toggle();
             let mode_str = guard.as_str().to_string();
             log::info!("[GlobalVoice] Toggled inject mode to: {}", mode_str);
-            if let Ok(mut cfg) = companion_core::config::ConfigManager::new().and_then(|m| m.load()) {
+            { let state = app.state::<ConfigState>(); let mut cfg = state.config.lock().await;
                 cfg.global_voice.inject_mode = mode_str;
-                let _ = companion_core::config::ConfigManager::new().and_then(|m| m.save(&cfg));
+                state.save().await;
             }
         }
 
@@ -200,9 +205,9 @@ pub async fn handle_voice_command(
             let next = names[next_idx].clone();
             log::info!("[GlobalVoice] Cycling ASR engine to: {}", next);
             *guard = next.clone();
-            if let Ok(mut cfg) = companion_core::config::ConfigManager::new().and_then(|m| m.load()) {
+            { let state = app.state::<ConfigState>(); let mut cfg = state.config.lock().await;
                 cfg.global_voice.asr_engine = next;
-                let _ = companion_core::config::ConfigManager::new().and_then(|m| m.save(&cfg));
+                state.save().await;
             }
         }
     }

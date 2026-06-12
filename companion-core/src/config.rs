@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use thiserror::Error;
@@ -41,9 +40,9 @@ pub struct CompanionConfig {
     #[serde(default)]
     pub system_mode: bool,
 
-    /// Enable accessibility features
+    /// Auto-play TTS for every AI reply
     #[serde(default)]
-    pub enable_accessibility: bool,
+    pub tts_auto_play: bool,
 
     /// VAD energy threshold (0.0 – 1.0)
     #[serde(default = "default_vad_threshold")]
@@ -61,25 +60,17 @@ pub struct CompanionConfig {
     #[serde(default = "default_tts_speed")]
     pub tts_speed: f32,
 
+    /// API token for Xiaomi/cloud services (env COMPANION_API_TOKEN overrides)
+    #[serde(default)]
+    pub api_token: Option<String>,
+
     /// User's display name
     #[serde(default = "default_user_name")]
     pub user_name: String,
 
-    /// Active conversation style template name
-    #[serde(default = "default_style")]
-    pub style_template: String,
-
     /// Custom system prompt override (optional)
     #[serde(default)]
     pub custom_system_prompt: Option<String>,
-
-    /// Emotion → style mapping
-    #[serde(default)]
-    pub emotion_mapping: HashMap<String, String>,
-
-    /// API token for Xiaomi/cloud services (env COMPANION_API_TOKEN overrides)
-    #[serde(default)]
-    pub api_token: Option<String>,
 
     // ── Provider-specific overrides ──
     #[serde(default)]
@@ -162,7 +153,6 @@ fn default_voice_mode() -> String { "ptt".into() }
 fn default_tts_voice() -> String { "茉莉".into() }
 fn default_tts_speed() -> f32 { 1.0 }
 fn default_user_name() -> String { "User".into() }
-fn default_style() -> String { "professional".into() }
 
 impl Default for CompanionConfig {
     fn default() -> Self {
@@ -172,15 +162,13 @@ impl Default for CompanionConfig {
             asr_provider: default_asr(),
             tts_provider: default_tts(),
             system_mode: false,
-            enable_accessibility: false,
+            tts_auto_play: false,
             vad_threshold: default_vad_threshold(),
             voice_mode: default_voice_mode(),
             tts_voice: default_tts_voice(),
             tts_speed: default_tts_speed(),
             user_name: default_user_name(),
-            style_template: default_style(),
             custom_system_prompt: None,
-            emotion_mapping: HashMap::new(),
             api_token: None,
             llm: ProviderConfig::default(),
             asr: ProviderConfig::default(),
