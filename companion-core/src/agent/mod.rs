@@ -49,7 +49,7 @@ pub struct AgentResponse {
 #[async_trait]
 pub trait AgentEngine: Send + Sync {
     /// Send a user message and wait for the full agent reply.
-    async fn chat(&self, message: &str, history: &[ConversationMessage]) -> Result<AgentResponse, AgentError>;
+    async fn chat(&self, message: &str, history: &[ConversationMessage], system_prompt: Option<&str>) -> Result<AgentResponse, AgentError>;
 
     /// Streamed variant — each string is either a text token or a tool-call marker.
     async fn chat_stream(

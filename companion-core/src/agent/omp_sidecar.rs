@@ -292,7 +292,7 @@ impl OmpAgentSidecar {
 
 #[async_trait]
 impl AgentEngine for OmpAgentSidecar {
-    async fn chat(&self, message: &str, history: &[ConversationMessage]) -> Result<AgentResponse, AgentError> {
+    async fn chat(&self, message: &str, history: &[ConversationMessage], system_prompt: Option<&str>) -> Result<AgentResponse, AgentError> {
         let history_json: Vec<Value> = history.iter().map(|msg| {
             let role = match msg.role {
                 super::MessageRole::User => "user",
@@ -303,7 +303,10 @@ impl AgentEngine for OmpAgentSidecar {
             serde_json::json!({ "role": role, "content": msg.content })
         }).collect();
 
-        let params = serde_json::json!({ "message": message, "history": history_json });
+        let mut params = serde_json::json!({ "message": message, "history": history_json });
+        if let Some(sp) = system_prompt {
+            params["system_prompt"] = serde_json::Value::String(sp.to_string());
+        }
         let result = self.send_request("chat", Some(params)).await?;
         let text = result.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
         Ok(AgentResponse { text, tool_calls: vec![] })

@@ -131,7 +131,7 @@ impl ToolState {
 #[tauri::command]
 pub async fn chat(
     agent: tauri::State<'_, AgentState>,
-    _config: tauri::State<'_, ConfigState>,
+    config: tauri::State<'_, ConfigState>,
     _voice: tauri::State<'_, VoiceState>,
     message: String,
 ) -> Result<String, String> {
@@ -149,7 +149,7 @@ pub async fn chat(
     };
     let response = agent
         .agent
-        .chat(&message, &history_snapshot)
+        .chat(&message, &history_snapshot, config.config.lock().await.custom_system_prompt.as_deref())
         .await
         .map_err(|e| format!("Agent error: {e}"))?;
     {
@@ -174,7 +174,7 @@ pub async fn chat(
 #[tauri::command]
 pub async fn chat_with_tools(
     agent: tauri::State<'_, AgentState>,
-    _config: tauri::State<'_, ConfigState>,
+    config: tauri::State<'_, ConfigState>,
     message: String,
 ) -> Result<String, String> {
     if !agent.agent.is_running().await {
@@ -190,7 +190,7 @@ pub async fn chat_with_tools(
     };
     let response = agent
         .agent
-        .chat(&message, &history_snapshot)
+        .chat(&message, &history_snapshot, config.config.lock().await.custom_system_prompt.as_deref())
         .await
         .map_err(|e| format!("Agent error: {e}"))?;
     {

@@ -11,7 +11,7 @@ mod e2e_tests {
     struct EchoAgent;
     #[async_trait::async_trait]
     impl AgentEngine for EchoAgent {
-        async fn chat(&self, message: &str, _history: &[ConversationMessage]) -> Result<AgentResponse, AgentError> {
+        async fn chat(&self, message: &str, _history: &[ConversationMessage], _system_prompt: Option<&str>) -> Result<AgentResponse, AgentError> {
             Ok(AgentResponse { text: format!("Echo: {message}"), tool_calls: vec![] })
         }
         async fn chat_stream(&self, message: &str, _history: &[ConversationMessage]) -> Result<tokio::sync::mpsc::Receiver<AgentStreamEvent>, AgentError> {
@@ -32,7 +32,7 @@ mod e2e_tests {
         let h1 = history.lock().await.clone();
         let resp = tokio::time::timeout(
             std::time::Duration::from_secs(5),
-            agent.chat("hello", &h1),
+            agent.chat("hello", &h1, None),
         ).await.expect("timed out").expect("chat failed");
 
         assert_eq!(resp.text, "Echo: hello");
