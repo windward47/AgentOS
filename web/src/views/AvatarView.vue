@@ -2,15 +2,13 @@
 /**
  * AvatarWindow — dedicated transparent overlay window for the Live2D character.
  *
- * REAL LIVE2D INTEGRATION (requires Cubism 4 SDK for Web):
- *   1. Download Cubism SDK for Web from https://www.live2d.com/download/cubism-sdk/
- *   2. Copy Core/live2dcubismcore.min.js → web/public/live2d/
- *   3. Copy Framework/dist/live2dcubismframework.min.js → web/public/live2d/
- *   4. Place model files in web/public/models/<model-name>/
- *   5. Uncomment the init block below and replace the placeholder values
+ * The actual rendering happens in the avatar window (web/public/avatar.html),
+ * which loads pixi-live2d-display + Cubism Core from CDN.
+ * See `web/src/avatar/main.ts` for the render loop and interaction handling.
  *
- * The renderer module (web/src/live2d/renderer.ts) handles the raw Cubism Core
- * API — no pixi.js or third-party library required.
+ * This Vue component is only used as the Tauri window entry point
+ * (route: /avatar). No Cubism SDK code lives in the web/src/ tree — it's
+ * all in the pre-built avatar-agent bundle.
  */
 
 import { onMounted } from 'vue'

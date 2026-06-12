@@ -101,7 +101,6 @@ AgentOS/
 │   │   ├── views/                      ← ChatView, SettingsView, AvatarView
 │   │   ├── components/                 ← Live2DCanvas
 │   │   ├── avatar/main.ts              ← Live2D 窗口入口 (pixi-live2d-display)
-│   │   ├── live2d/                     ← Cubism 4 Framework TS 移植版
 │   │   └── types/ipc.ts                ← IPC 事件类型定义
 │   └── vite.config.ts
 ├── services/agent-sidecar/             ← Bun sidecar TS 项目

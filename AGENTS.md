@@ -16,7 +16,7 @@ Agent 核心通过 Bun sidecar 子进程接入 oh-my-pi，不自研 LLM 编排�
   - Full event streaming (tokens, tool calls)
   - `@oh-my-pi/pi-ai` for LLM provider routing
   - Reads `~/.omp/agent/models.yml` and `~/.omp/agent/config.yml` for provider config
-- **Live2D**: Pre-built avatar-agent bundle (`web/public/avatar-agent/`) with Cubism Core (live2dcubismcore.min.js) + shimmed Cubism2 globals — loaded in a separate transparent Tauri window. Also has a native Cubism 4 Framework TypeScript port at `web/src/live2d/` (pending migration).
+- **Live2D**: Pre-built avatar-agent bundle (`web/public/avatar-agent/`) with Cubism Core (live2dcubismcore.min.js) + shimmed Cubism2 globals — loaded in a separate transparent Tauri window.
 - **LLM API**: SiliconFlow API (`api.siliconflow.cn`) via omp → `sensenova` provider alias in `~/.omp/agent/models.yml`. Default model: `nex-agi/Nex-N2-Pro` (free tier)
 - **Entry points**:
   - Rust: `companion-tauri/src/main.rs` → `lib.rs` (Tauri Builder)
@@ -82,7 +82,6 @@ Cargo workspace (root Cargo.toml)
 web/src/
   views/          ChatView.vue, SettingsView.vue, AvatarView.vue
   components/     Live2DCanvas.vue
-  live2d/         Cubism 4 Framework TS 移植版（45+ 文件，未接入主流程）
   avatar/         main.ts (pixi-live2d-display 入口)
   router/         / (chat), /settings, /avatar
   stores/         Pinia app store (messages, sending state)
