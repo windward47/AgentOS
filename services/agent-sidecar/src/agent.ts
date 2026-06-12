@@ -36,7 +36,7 @@ export interface AgentCallbacks {
     onError: (message: string) => void;
 }
 
-// ── Web tools (powered by @oh-my-pi/pi-coding-agent) ────────────────────
+// ── Web tools (DuckDuckGo — free, zero config) ─────────────────────
 
 /** Search the web via DuckDuckGo (free, zero config). Always works. */
 const WEB_SEARCH_TOOL: AgentTool = {
