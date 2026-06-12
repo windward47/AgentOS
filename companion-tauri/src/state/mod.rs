@@ -390,10 +390,14 @@ pub async fn browse_screenshot(url: String) -> Result<String, String> {
     if !lower.starts_with("http://") && !lower.starts_with("https://") {
         return Err("Only http:// and https:// URLs are allowed".into());
     }
-    let script = std::env::current_dir()
-        .unwrap_or_default()
-        .join("scripts")
-        .join("browser-screenshot.mjs");
+    let cwd = std::env::current_dir().unwrap_or_default();
+    // Tauri runs from companion-tauri/ — go up to project root to find scripts/
+    let script = if cwd.ends_with("companion-tauri") {
+        cwd.parent().unwrap_or(&cwd).join("scripts")
+    } else {
+        cwd.join("scripts")
+    }
+    .join("browser-screenshot.mjs");
     let tmp = std::env::temp_dir().join(format!(
         "companion_browse_{}_{}.png",
         std::process::id(),
