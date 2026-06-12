@@ -56,11 +56,6 @@ const WEB_SEARCH_TOOL: AgentTool = {
     },
 };
 
-/** Search the web using omp's multi-provider search (Brave, Perplexity, SearXNG, etc.). */
-const WEB_SEARCH_TOOL_UNUSED: AgentTool = {
-
-
-
 /** Fetch and read the text content of a URL. */
 const WEB_FETCH_TOOL: AgentTool = {
     name: "web_fetch",
