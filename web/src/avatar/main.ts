@@ -86,8 +86,21 @@ async function init() {
     // Cursor tracking at full 60fps for smooth head movement
     if (invokeFn) {
       invokeFn('get_cursor_pos').then(([cx, cy]: [number, number]) => {
-        eyeTargetX = (cx / screen.width) * 2 - 1;
-        eyeTargetY = (cy / screen.height) * 2 - 1;
+        // Compute cursor offset relative to avatar window center
+        // so head tracking works consistently regardless of window position
+        const win = gcwFn?.();
+        if (win) {
+          Promise.all([win.outerPosition(), win.outerSize()]).then(([pos, size]) => {
+            const winCx = pos.x + size.width / 2;
+            const winCy = pos.y + size.height / 2;
+            eyeTargetX = ((cx - winCx) / (size.width / 2));
+            eyeTargetY = ((cy - winCy) / (size.height / 2));
+          }).catch(() => {});
+        } else {
+          // Fallback: absolute screen (old behavior)
+          eyeTargetX = (cx / screen.width) * 2 - 1;
+          eyeTargetY = (cy / screen.height) * 2 - 1;
+        }
         if (cx !== 0 || cy !== 0) eyeIdleAt = Date.now() + 3000;
       }).catch(() => {});
     }
