@@ -124,7 +124,7 @@ function onProviderChange(kind: 'llm' | 'asr' | 'tts') {
       </div>
     </div>
 
-    <div class="max-w-2xl mx-auto w-full px-6 py-6 space-y-6">
+    <div v-if="config" class="max-w-2xl mx-auto w-full px-6 py-6 space-y-6">
 
       <!-- ── AI Providers ── -->
       <section class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
