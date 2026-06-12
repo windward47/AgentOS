@@ -15,7 +15,7 @@ onMounted(async () => {
     sandbox_path: '~/.companion/sandbox',
     llm_provider: 'siliconflow', asr_provider: 'xiaomi', tts_provider: 'xiaomi',
     system_mode: false, tts_auto_play: false, vad_threshold: 0.3,
-    user_name: 'User', custom_system_prompt: '', default_api_key: '',
+    user_name: 'User', custom_system_prompt: '', default_api_key: '', api_token: '',
     voice_mode: 'ptt', tts_voice: '茉莉', tts_speed: 1.0,
     llm: { provider: '', url: null, key: null, model: null },
     asr: { provider: '', url: null, key: null, model: null },

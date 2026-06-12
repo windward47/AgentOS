@@ -64,7 +64,7 @@ pub struct CompanionConfig {
     pub tts_speed: f32,
 
     /// Default API key for AI providers (env COMPANION_API_TOKEN overrides)
-    #[serde(default)]
+    #[serde(default, alias = "api_token")]
     pub default_api_key: String,
 
     /// User's display name

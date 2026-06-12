@@ -41,6 +41,7 @@ export interface CompanionConfig {
   user_name: string
   custom_system_prompt: string
   default_api_key: string
+  api_token?: string  // legacy — maps to default_api_key via serde alias
   llm: ProviderConfig
   asr: ProviderConfig
   tts: ProviderConfig
