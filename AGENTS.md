@@ -226,6 +226,18 @@ Live2D 不应该和聊天 UI 挤在同一个 Vue 组件里。正确做法：
 
 **正确做法**：`companion-core`（纯逻辑） + `companion-tauri`（Tauri 壳），通过 workspace 管理。核心库不依赖 tauri，可独立编译、测试、甚至被非 Tauri 项目复用。
 
+### 9. Agent 工具优先复用 omp，不重复造轮子
+
+向 Agent 添加新工具能力时，按以下顺序判断：
+
+1. **是否 Agent 工具**（LLM 可调用的功能，如搜索、读文件、执行命令）？
+2. **是 → 先查 `@oh-my-pi/pi-coding-agent`**。它有 30+ 现成工具（search, read, write, bash, browser, ssh, edit, github 等），可直接 import 到 `services/agent-sidecar/src/agent.ts`
+3. **omp 有 → 直接 import 注册**，不用自己写实现
+4. **omp 没有 → 再手写或找 npm/Rust crate 方案**
+5. **前端 UI 功能**（渲染、组件等）→ omp 是 CLI 无前端，直接走 npm/web 生态
+
+**参考**：查看 omp 可用工具 → https://github.com/can1357/oh-my-pi/tree/main/packages/coding-agent/src/tools
+
 ## Current Sprint Status
 
 | Sprint | Status | Core Deliverable |
