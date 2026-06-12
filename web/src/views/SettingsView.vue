@@ -47,24 +47,57 @@ function savedProviderNames(kind: 'llm' | 'asr' | 'tts'): string[] {
   return [...new Set(preset ? [preset, ...names] : names)]
 }
 
-// ── Model detection ──
-const detectingLlm = ref(false); const detectingAsr = ref(false); const detectingTts = ref(false)
-const llmModels = ref<string[]>([]); const asrModels = ref<string[]>([]); const ttsModels = ref<string[]>([])
+// ── Model detection (unified per kind) ──
+const detecting = ref({ llm: false, asr: false, tts: false })
+const modelLists = ref<Record<string, string[]>>({ llm: [], asr: [], tts: [] })
+
+function modelList(kind: string) { return modelLists.value[kind] ?? [] }
 
 async function detectModels(kind: 'llm' | 'asr' | 'tts') {
   if (!config.value) return
   const prov = config.value[kind]
   if (!prov.url) return
-  const setDetecting = kind === 'llm' ? (v: boolean) => detectingLlm.value = v
-    : kind === 'asr' ? (v: boolean) => detectingAsr.value = v : (v: boolean) => detectingTts.value = v
-  const setModels = kind === 'llm' ? llmModels : kind === 'asr' ? asrModels : ttsModels
-  setDetecting(true); setModels.value = []
+  detecting.value[kind] = true
+  modelLists.value[kind] = []
   try {
     const models = await invoke<string[]>('list_models', { baseUrl: prov.url, apiKey: prov.key || '' })
-    setModels.value = models
+    modelLists.value[kind] = models
     if (models.length > 0 && !prov.model) prov.model = models[0]
-  } catch (err: any) { setModels.value = [String(err)] }
-  finally { setDetecting(false) }
+  } catch (err: any) { modelLists.value[kind] = [String(err)] }
+  finally { detecting.value[kind] = false }
+}
+
+// ── Provider UI helpers ──
+const PRESET_URLS: Record<string, Record<string, string>> = {
+  llm: { siliconflow: 'https://api.siliconflow.cn/v1', xiaomi: 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions' },
+  asr: { xiaomi: 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions' },
+  tts: { xiaomi: 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions' },
+}
+const PRESET_PROVIDERS: Record<string, string[]> = {
+  llm: ['ollama', 'openai', 'local'],
+  asr: ['whisper', 'azure', 'local'],
+  tts: ['edge', 'azure', 'local'],
+}
+
+function isPreset(kind: string) { return config.value?.[kind+'_provider' as keyof CompanionConfig] !== 'custom' }
+function showProviderDetail(_kind: string) { return true } // always show
+function providerLabel(kind: string) { return isPreset(kind) ? (config.value?.[kind+'_provider' as keyof CompanionConfig] as string || 'Preset') : 'Custom' }
+function providerPlaceholder(kind: string) { return isPreset(kind) ? '' : PRESET_PROVIDERS[kind]?.join(', ') || 'provider' }
+function urlPlaceholder(kind: string) { return 'https://...' }
+function providerPresets(kind: string) { return PRESET_PROVIDERS[kind] ?? [] }
+
+/** Auto-fill provider name + URL when switching presets; clear on Custom. */
+function onProviderChange(kind: 'llm' | 'asr' | 'tts') {
+  if (!config.value) return
+  const key = config.value[kind+'_provider' as keyof CompanionConfig] as string
+  const urls = PRESET_URLS[kind] ?? {}
+  if (key !== 'custom' && urls[key]) {
+    config.value[kind].provider = key
+    config.value[kind].url = urls[key]
+  } else {
+    config.value[kind].provider = ''
+    config.value[kind].url = null
+  }
 }
 </script>
 
@@ -87,10 +120,12 @@ async function detectModels(kind: 'llm' | 'asr' | 'tts') {
         <div class="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
           <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">AI Providers</h2>
         </div>
+
+        <!-- Provider selector row -->
         <div class="p-5 grid grid-cols-3 gap-5">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1.5">LLM Provider</label>
-            <select v-model="config.llm_provider" class="block w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors">
+            <select v-model="config.llm_provider" @change="onProviderChange('llm')" class="block w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors">
               <option value="siliconflow">SiliconFlow</option>
               <option value="xiaomi">Xiaomi</option>
               <option value="custom">Custom…</option>
@@ -98,58 +133,63 @@ async function detectModels(kind: 'llm' | 'asr' | 'tts') {
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1.5">ASR Provider</label>
-            <select v-model="config.asr_provider" class="block w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors">
+            <select v-model="config.asr_provider" @change="onProviderChange('asr')" class="block w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors">
               <option value="xiaomi">Xiaomi</option>
               <option value="custom">Custom…</option>
             </select>
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1.5">TTS Provider</label>
-            <select v-model="config.tts_provider" class="block w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors">
+            <select v-model="config.tts_provider" @change="onProviderChange('tts')" class="block w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors">
               <option value="xiaomi">Xiaomi</option>
               <option value="custom">Custom…</option>
             </select>
           </div>
         </div>
 
-        <!-- Custom provider fields -->
-        <div v-if="config.llm_provider === 'custom' || config.asr_provider === 'custom' || config.tts_provider === 'custom'" class="px-5 pb-5 border-t border-gray-100 space-y-5 pt-4">
-          <div v-if="config.llm_provider === 'custom'">
-            <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">LLM — Custom Provider</h3>
-            <div class="grid grid-cols-2 gap-3 mb-3">
-              <div><label class="block text-[11px] font-medium text-gray-600 mb-1">Provider Name</label><input v-model="config.llm.provider" :list="'llmProviderList'" placeholder="e.g. ollama, openai, local" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" /></div>
-              <div><label class="block text-[11px] font-medium text-gray-600 mb-1">API URL</label><input v-model="config.llm.url" placeholder="https://api.openai.com/v1" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" /></div>
+        <!-- Provider detail fields (always visible, reused for presets too) -->
+        <div class="px-5 pb-5 border-t border-gray-100 space-y-6 pt-4">
+          <template v-for="kind in (['llm','asr','tts'] as const)" :key="kind">
+            <div v-if="showProviderDetail(kind)" class="bg-gray-50 rounded-lg p-4 space-y-3">
+              <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ kind.toUpperCase() }} — {{ providerLabel(kind) }}</h3>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-[11px] font-medium text-gray-600 mb-1">Provider Name</label>
+                  <input v-model="config[kind].provider" :list="kind+'ProviderList'" :disabled="isPreset(kind)"
+                    :class="['block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none', isPreset(kind) ? 'bg-gray-100 text-gray-500' : '']"
+                    :placeholder="providerPlaceholder(kind)" />
+                  <datalist :id="kind+'ProviderList'">
+                    <option v-for="n in savedProviderNames(kind)" :key="n" :value="n" />
+                    <option v-for="n in providerPresets(kind)" :key="n" :value="n" />
+                  </datalist>
+                </div>
+                <div>
+                  <label class="block text-[11px] font-medium text-gray-600 mb-1">API URL</label>
+                  <input v-model="config[kind].url" :disabled="isPreset(kind)"
+                    :class="['block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none', isPreset(kind) ? 'bg-gray-100 text-gray-500' : '']"
+                    :placeholder="urlPlaceholder(kind)" />
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-[11px] font-medium text-gray-600 mb-1">API Key</label>
+                  <input v-model="config[kind].key" type="password" placeholder="sk-… or leave empty for env var"
+                    class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" />
+                </div>
+                <div>
+                  <label class="block text-[11px] font-medium text-gray-600 mb-1">Model</label>
+                  <div class="flex gap-2">
+                    <button @click="detectModels(kind)" :disabled="detecting[kind]" class="shrink-0 text-xs px-3 py-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-40">{{ detecting[kind] ? 'Detecting…' : 'Detect' }}</button>
+                    <select v-if="modelList(kind).length" v-model="config[kind].model" class="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono">
+                      <option value="">— select —</option>
+                      <option v-for="m in modelList(kind)" :key="m" :value="m">{{ m }}</option>
+                    </select>
+                    <input v-else v-model="config[kind].model" placeholder="model name" class="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" />
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="grid grid-cols-2 gap-3 mb-3">
-              <div><label class="block text-[11px] font-medium text-gray-600 mb-1">API Key</label><input v-model="config.llm.key" type="password" placeholder="sk-…" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" /></div>
-              <div><label class="block text-[11px] font-medium text-gray-600 mb-1">Model</label><div class="flex gap-2"><button @click="detectModels('llm')" :disabled="detectingLlm" class="shrink-0 text-xs px-3 py-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-40">{{ detectingLlm ? 'Detecting…' : 'Detect' }}</button><select v-if="llmModels.length" v-model="config.llm.model" class="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono"><option v-for="m in llmModels" :key="m" :value="m">{{ m }}</option></select><input v-else v-model="config.llm.model" placeholder="model name" class="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" /></div></div>
-            </div>
-            <datalist id="llmProviderList"><option v-for="n in savedProviderNames('llm')" :key="n" :value="n" /> <option value="ollama" /> <option value="openai" /> <option value="local" /></datalist>
-          </div>
-          <div v-if="config.asr_provider === 'custom'">
-            <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">ASR — Custom Provider</h3>
-            <div class="grid grid-cols-2 gap-3 mb-3">
-              <div><label class="block text-[11px] font-medium text-gray-600 mb-1">Provider Name</label><input v-model="config.asr.provider" :list="'asrProviderList'" placeholder="e.g. whisper, azure" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" /></div>
-              <div><label class="block text-[11px] font-medium text-gray-600 mb-1">API URL</label><input v-model="config.asr.url" placeholder="https://api.example.com/v1" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" /></div>
-            </div>
-            <div class="grid grid-cols-2 gap-3 mb-3">
-              <div><label class="block text-[11px] font-medium text-gray-600 mb-1">API Key</label><input v-model="config.asr.key" type="password" placeholder="sk-…" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" /></div>
-              <div><label class="block text-[11px] font-medium text-gray-600 mb-1">Model</label><div class="flex gap-2"><button @click="detectModels('asr')" :disabled="detectingAsr" class="shrink-0 text-xs px-3 py-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-40">{{ detectingAsr ? 'Detecting…' : 'Detect' }}</button><select v-if="asrModels.length" v-model="config.asr.model" class="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono"><option v-for="m in asrModels" :key="m" :value="m">{{ m }}</option></select><input v-else v-model="config.asr.model" placeholder="model name" class="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" /></div></div>
-            </div>
-            <datalist id="asrProviderList"><option v-for="n in savedProviderNames('asr')" :key="n" :value="n" /> <option value="whisper" /> <option value="azure" /> <option value="local" /></datalist>
-          </div>
-          <div v-if="config.tts_provider === 'custom'">
-            <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">TTS — Custom Provider</h3>
-            <div class="grid grid-cols-2 gap-3 mb-3">
-              <div><label class="block text-[11px] font-medium text-gray-600 mb-1">Provider Name</label><input v-model="config.tts.provider" :list="'ttsProviderList'" placeholder="e.g. edge, azure, local" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" /></div>
-              <div><label class="block text-[11px] font-medium text-gray-600 mb-1">API URL</label><input v-model="config.tts.url" placeholder="https://api.example.com/v1" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" /></div>
-            </div>
-            <div class="grid grid-cols-2 gap-3 mb-3">
-              <div><label class="block text-[11px] font-medium text-gray-600 mb-1">API Key</label><input v-model="config.tts.key" type="password" placeholder="sk-…" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" /></div>
-              <div><label class="block text-[11px] font-medium text-gray-600 mb-1">Model</label><div class="flex gap-2"><button @click="detectModels('tts')" :disabled="detectingTts" class="shrink-0 text-xs px-3 py-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-40">{{ detectingTts ? 'Detecting…' : 'Detect' }}</button><select v-if="ttsModels.length" v-model="config.tts.model" class="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono"><option v-for="m in ttsModels" :key="m" :value="m">{{ m }}</option></select><input v-else v-model="config.tts.model" placeholder="model name" class="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" /></div></div>
-            </div>
-            <datalist id="ttsProviderList"><option v-for="n in savedProviderNames('tts')" :key="n" :value="n" /> <option value="edge" /> <option value="azure" /> <option value="local" /></datalist>
-          </div>
+          </template>
         </div>
       </section>
 
