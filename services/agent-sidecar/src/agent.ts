@@ -6,6 +6,29 @@ import type { Api, Model } from "@oh-my-pi/pi-ai";
 import { buildPiModel, loadConfig, resolveModelRole } from "./config";
 import { runSearchQuery } from "@oh-my-pi/pi-coding-agent/web/search";
 
+// ── DuckDuckGo fallback (zero-config, always available) ───────────────
+
+async function duckDuckGoSearch(query: string) {
+    try {
+        const q = encodeURIComponent(query);
+        const resp = await fetch(`https://api.duckduckgo.com/?q=${q}&format=json`);
+        const data: any = await resp.json();
+        let text = "";
+        if (data.AbstractText) text += `Summary: ${data.AbstractText}\n`;
+        if (data.AbstractURL) text += `Source: ${data.AbstractURL}\n`;
+        if (data.RelatedTopics?.length) {
+            text += "\nRelated:\n";
+            for (const t of data.RelatedTopics.slice(0, 5)) {
+                if (t.Text) text += `- ${t.Text}\n`;
+            }
+        }
+        if (!text) text = `No results found for "${query}".`;
+        return { content: [{ type: "text" as const, text: text.trim() }] };
+    } catch (err: any) {
+        return { content: [{ type: "text" as const, text: `Search failed: ${err.message}` }] };
+    }
+}
+
 export interface AgentCallbacks {
     onToken: (token: string) => void;
     onToolStart: (name: string) => void;
@@ -35,12 +58,18 @@ const WEB_SEARCH_TOOL: AgentTool = {
                 query: params.query,
                 limit: params.limit ?? 5,
             });
+            const text = result.content[0]?.text ?? "";
+            // If omp has no providers configured, fall back to DuckDuckGo
+            if (text.includes("No web search provider configured")) {
+                return await duckDuckGoSearch(params.query);
+            }
             return { content: result.content };
         } catch (err: any) {
-            return { content: [{ type: "text" as const, text: `Search failed: ${err.message}` }] };
+            return await duckDuckGoSearch(params.query);
         }
     },
 };
+
 
 
 /** Fetch and read the text content of a URL. */
