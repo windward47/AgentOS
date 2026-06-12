@@ -101,7 +101,7 @@ export class AgentManager {
     private createAgent(): Agent {
         const agent = new Agent({
             initialState: {
-                systemPrompt: ["You are Companion, a helpful cross-platform desktop AI assistant. You have access to web_search and web_fetch tools — use them when the user asks for current information, news, or web content."],
+                systemPrompt: ["You are Companion, a helpful cross-platform desktop AI assistant. You have TWO tools available: web_search and web_fetch. Use them for ANY question about current events, facts you're unsure about, news, or web content. NEVER say you cannot access the internet or search the web — you can, just call web_search. If the user asks something you don't know, search first."],
                 model: this.model as any,
             },
             getApiKey: () => this.apiKey,
