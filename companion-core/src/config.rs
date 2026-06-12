@@ -3,16 +3,19 @@ use std::fs;
 use std::path::PathBuf;
 use thiserror::Error;
 
-/// Provider-specific overrides (URL, API key, model name).
+/// Provider-specific configuration (URL, API key, model, provider name).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProviderConfig {
+    /// Provider name (e.g. "sensenova", "ollama", "openai").
+    #[serde(default)]
+    pub provider: String,
     /// Custom API endpoint URL (overrides default).
     #[serde(default)]
     pub url: Option<String>,
     /// Custom API key (overrides default token).
     #[serde(default)]
     pub key: Option<String>,
-    /// Custom model name (overrides default model).
+    /// Selected model name (populated via Detect).
     #[serde(default)]
     pub model: Option<String>,
 }
@@ -79,6 +82,10 @@ pub struct CompanionConfig {
     pub asr: ProviderConfig,
     #[serde(default)]
     pub tts: ProviderConfig,
+
+    /// Saved custom provider configs (remembered after Save).
+    #[serde(default)]
+    pub custom_providers: Vec<ProviderConfig>,
 
     // ── Global voice (system-tray hotkey ASR/TTS) ──
     #[serde(default)]
@@ -173,6 +180,7 @@ impl Default for CompanionConfig {
             llm: ProviderConfig::default(),
             asr: ProviderConfig::default(),
             tts: ProviderConfig::default(),
+            custom_providers: Vec::new(),
             global_voice: GlobalVoiceConfig::default(),
         }
     }

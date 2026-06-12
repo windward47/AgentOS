@@ -11,6 +11,7 @@ export interface ToolExecutionEvent { tool: string; status: 'started' | 'complet
 // ── Config types (1:1 with Rust CompanionConfig) ──
 
 export interface ProviderConfig {
+  provider: string
   url: string | null
   key: string | null
   model: string | null
@@ -43,5 +44,6 @@ export interface CompanionConfig {
   llm: ProviderConfig
   asr: ProviderConfig
   tts: ProviderConfig
+  custom_providers: ProviderConfig[]
   global_voice: GlobalVoiceConfig
 }
