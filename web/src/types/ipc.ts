@@ -40,7 +40,7 @@ export interface CompanionConfig {
   tts_speed: number
   user_name: string
   custom_system_prompt: string | null
-  api_token: string | null
+  default_api_key: string
   llm: ProviderConfig
   asr: ProviderConfig
   tts: ProviderConfig

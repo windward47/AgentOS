@@ -63,9 +63,9 @@ pub struct CompanionConfig {
     #[serde(default = "default_tts_speed")]
     pub tts_speed: f32,
 
-    /// API token for Xiaomi/cloud services (env COMPANION_API_TOKEN overrides)
+    /// Default API key for AI providers (env COMPANION_API_TOKEN overrides)
     #[serde(default)]
-    pub api_token: Option<String>,
+    pub default_api_key: String,
 
     /// User's display name
     #[serde(default = "default_user_name")]
@@ -176,7 +176,7 @@ impl Default for CompanionConfig {
             tts_speed: default_tts_speed(),
             user_name: default_user_name(),
             custom_system_prompt: None,
-            api_token: None,
+            default_api_key: String::new(),
             llm: ProviderConfig::default(),
             asr: ProviderConfig::default(),
             tts: ProviderConfig::default(),

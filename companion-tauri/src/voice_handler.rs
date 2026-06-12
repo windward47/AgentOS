@@ -120,15 +120,13 @@ pub async fn handle_voice_command(
                 }
             };
 
-            let api_token = app
-                .state::<ConfigState>()
-                .config
-                .lock()
-                .await
-                .api_token
-                .clone()
-                .or_else(|| std::env::var("COMPANION_API_TOKEN").ok())
-                .unwrap_or_default();
+            let state = app.state::<ConfigState>();
+            let cfg_guard = state.config.lock().await;
+            let api_token = if let Ok(tok) = std::env::var("COMPANION_API_TOKEN") {
+                if !tok.is_empty() { tok } else { cfg_guard.default_api_key.clone() }
+            } else {
+                cfg_guard.default_api_key.clone()
+            };
 
             if api_token.is_empty() {
                 log::error!("[GlobalVoice] COMPANION_API_TOKEN not set (neither in config nor env), cannot use TTS");
@@ -258,11 +256,12 @@ pub fn build_global_asr_engines(
     use std::collections::HashMap;
 
     let mut engines: HashMap<String, Box<dyn AsrProvider + Send + Sync>> = HashMap::new();
-    let api_token = cfg
-        .api_token
-        .clone()
-        .or_else(|| std::env::var("COMPANION_API_TOKEN").ok())
-        .unwrap_or_default();
+    let default_key = cfg.default_api_key.clone();
+    let api_token = if let Ok(tok) = std::env::var("COMPANION_API_TOKEN") {
+        if !tok.is_empty() { tok } else { default_key }
+    } else {
+        default_key
+    };
 
     // Mimo ASR (Xiaomi)
     if !api_token.is_empty() {

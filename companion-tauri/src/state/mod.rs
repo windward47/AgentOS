@@ -77,19 +77,11 @@ impl ConfigState {
     }
 }
 
-/// Resolve the API token from env var or config.
-pub fn resolve_api_token(config: &CompanionConfig) -> String {
-    if let Ok(tok) = std::env::var("COMPANION_API_TOKEN") {
-        if !tok.is_empty() {
-            return tok;
-        }
-    }
-    if let Some(ref tok) = config.api_token {
-        if !tok.is_empty() {
-            return tok.clone();
-        }
-    }
-    String::new()
+/// Resolve API key: ProviderConfig.key → config.default_api_key → env COMPANION_API_TOKEN → ""
+pub fn resolve_provider_key(prov: &companion_core::config::ProviderConfig, fallback_key: &str) -> String {
+    if let Some(ref k) = prov.key { if !k.is_empty() { return k.clone(); } }
+    if let Ok(tok) = std::env::var("COMPANION_API_TOKEN") { if !tok.is_empty() { return tok; } }
+    fallback_key.to_string()
 }
 
 // ── AuditState ──────────────────────────────────────────────────────────
@@ -235,20 +227,11 @@ pub async fn transcribe_audio(
     audio: Vec<f32>,
 ) -> Result<String, String> {
     let cfg = config.config.lock().await;
-    let token = resolve_api_token(&cfg);
-    let asr = if cfg.asr_provider == "custom" && cfg.asr.url.is_some() {
-        let key = cfg
-            .asr
-            .key
-            .clone()
-            .unwrap_or_else(|| token.clone());
-        companion_core::asr::xiaomi_asr::XiaomiAsr::with_url(
-            &key,
-            cfg.asr.url.as_deref().unwrap_or(""),
-        )
-    } else {
-        companion_core::asr::xiaomi_asr::XiaomiAsr::new(&token)
-    };
+    let base_url = cfg.asr.url.clone().unwrap_or_else(||
+        "https://token-plan-cn.xiaomimimo.com/v1/chat/completions".into()
+    );
+    let api_key = resolve_provider_key(&cfg.asr, &cfg.default_api_key);
+    let asr = companion_core::asr::xiaomi_asr::XiaomiAsr::with_url(&api_key, &base_url);
     asr.transcribe(&audio)
         .await
         .map_err(|e| format!("ASR error: {e}"))
@@ -261,23 +244,12 @@ pub async fn synthesize_audio(
     voice: Option<String>,
 ) -> Result<Vec<f32>, String> {
     let cfg = config.config.lock().await;
-    let v = voice.unwrap_or_else(|| "茉莉".into());
-    let tts = if cfg.tts_provider == "custom" && cfg.tts.url.is_some() {
-        let key = cfg
-            .tts
-            .key
-            .as_deref()
-            .map(String::from)
-            .unwrap_or_else(|| resolve_api_token(&cfg));
-        companion_core::tts::xiaomi_tts::XiaomiTts::with_url(
-            &key,
-            &v,
-            cfg.tts.url.as_deref().unwrap_or(""),
-        )
-    } else {
-        let token = resolve_api_token(&cfg);
-        companion_core::tts::xiaomi_tts::XiaomiTts::new(&token, &v)
-    };
+    let v = voice.unwrap_or_else(|| cfg.tts_voice.clone());
+    let base_url = cfg.tts.url.clone().unwrap_or_else(||
+        "https://token-plan-cn.xiaomimimo.com/v1/chat/completions".into()
+    );
+    let api_key = resolve_provider_key(&cfg.tts, &cfg.default_api_key);
+    let tts = companion_core::tts::xiaomi_tts::XiaomiTts::with_url(&api_key, &v, &base_url);
     tts.synthesize(&text)
         .await
         .map_err(|e| format!("TTS error: {e}"))

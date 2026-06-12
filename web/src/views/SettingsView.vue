@@ -15,7 +15,7 @@ onMounted(async () => {
       sandbox_path: '~/.companion/sandbox',
       llm_provider: 'siliconflow', asr_provider: 'xiaomi', tts_provider: 'xiaomi',
       system_mode: false, tts_auto_play: false, vad_threshold: 0.3,
-      user_name: 'User', custom_system_prompt: null, api_token: null,
+      user_name: 'User', custom_system_prompt: null, default_api_key: '',
       voice_mode: 'ptt', tts_voice: '茉莉', tts_speed: 1.0,
       llm: { provider: '', url: null, key: null, model: null },
       asr: { provider: '', url: null, key: null, model: null },
@@ -28,11 +28,24 @@ onMounted(async () => {
       },
     }
   }
+  // Pre-fill provider fields for any preset that is selected
+  if (config.value) {
+    onProviderChange('llm')
+    onProviderChange('asr')
+    onProviderChange('tts')
+  }
 })
 
 async function save() {
   if (!config.value) return
   saving.value = true; saved.value = false
+  // Auto-save custom provider configs
+  for (const kind of ['llm','asr','tts'] as const) {
+    if (config.value[kind+'_provider' as keyof CompanionConfig] === 'custom' && config.value[kind].provider) {
+      const existing = config.value.custom_providers.find(p => p.provider === config.value![kind].provider)
+      if (!existing) config.value.custom_providers.push({ ...config.value[kind] })
+    }
+  }
   try { await invoke('update_config', { newConfig: config.value }); saved.value = true; setTimeout(() => saved.value = false, 2000) }
   catch {} finally { saving.value = false }
 }
@@ -69,9 +82,9 @@ async function detectModels(kind: 'llm' | 'asr' | 'tts') {
 
 // ── Provider UI helpers ──
 const PRESET_URLS: Record<string, Record<string, string>> = {
-  llm: { siliconflow: 'https://api.siliconflow.cn/v1', xiaomi: 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions' },
-  asr: { xiaomi: 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions' },
-  tts: { xiaomi: 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions' },
+  llm: { siliconflow: 'https://api.siliconflow.cn/v1', xiaomi: 'https://token-plan-cn.xiaomimimo.com/v1' },
+  asr: { xiaomi: 'https://token-plan-cn.xiaomimimo.com/v1' },
+  tts: { xiaomi: 'https://token-plan-cn.xiaomimimo.com/v1' },
 }
 const PRESET_PROVIDERS: Record<string, string[]> = {
   llm: ['ollama', 'openai', 'local'],
@@ -148,7 +161,11 @@ function onProviderChange(kind: 'llm' | 'asr' | 'tts') {
         </div>
 
         <!-- Provider detail fields (always visible, reused for presets too) -->
-        <div class="px-5 pb-5 border-t border-gray-100 space-y-6 pt-4">
+        <div class="px-5 pb-5 border-t border-gray-100 space-y-4 pt-4">
+          <div>
+            <label class="block text-[11px] font-medium text-gray-600 mb-1">Default API Key <span class="text-gray-400">(fallback for all providers, overridden by per-provider keys above)</span></label>
+            <input v-model="config.default_api_key" type="password" placeholder="Or set COMPANION_API_TOKEN env var" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" />
+          </div>
           <template v-for="kind in (['llm','asr','tts'] as const)" :key="kind">
             <div v-if="showProviderDetail(kind)" class="bg-gray-50 rounded-lg p-4 space-y-3">
               <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ kind.toUpperCase() }} — {{ providerLabel(kind) }}</h3>
@@ -256,7 +273,6 @@ function onProviderChange(kind: 'llm' | 'asr' | 'tts') {
         </div>
         <div class="p-5 space-y-4">
           <div><label class="block text-sm font-medium text-gray-700 mb-1.5">Sandbox Path</label><input v-model="config.sandbox_path" class="block w-full rounded-lg border border-gray-200 px-3.5 py-2.5 text-sm font-mono shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors" /></div>
-          <div><label class="block text-sm font-medium text-gray-700 mb-1.5">API Token</label><input v-model="config.api_token" type="password" placeholder="Or set COMPANION_API_TOKEN env var" class="block w-full rounded-lg border border-gray-200 px-3.5 py-2.5 text-sm font-mono shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors" /></div>
           <div class="flex items-center justify-between py-1">
             <div><div class="text-sm font-medium text-gray-900">System Mode</div><div class="text-xs text-gray-500 mt-0.5">Unrestricted file system access</div></div>
             <button @click="config!.system_mode = !config!.system_mode" :class="['relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors', config.system_mode ? 'bg-orange-500' : 'bg-gray-200']"><span :class="['pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200', config.system_mode ? 'translate-x-5' : 'translate-x-0']" /></button>
