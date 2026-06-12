@@ -264,9 +264,37 @@ Live2D 不应该和聊天 UI 挤在同一个 Vue 组件里。正确做法：
 
 ## Testing
 
-### playwright-cli (CLI-based browser testing)
-- **Install**: `npm install -g @playwright/cli@latest && playwright-cli install --skills`
-- **Usage**: `playwright-cli open http://localhost:5173/avatar.html --headed` for live visual debugging
-- **Key commands**: `snapshot`, `screenshot`, `eval "document.title"`, `console`
+### Playwright CLI (live debugging tool)
+- **Install** (one-time): `npm install -g @playwright/cli@latest && playwright-cli install --skills`
 - **Skills**: installed to `.claude/skills/playwright-cli/`
 - **Why CLI not MCP**: Token-efficient — no large tool schemas loaded into agent context
+
+#### Quick start (debug Live2D avatar)
+```bash
+# Terminal 1: start Vite dev server
+cd web && npm run dev
+
+# Terminal 2: open avatar in headed browser
+playwright-cli open http://localhost:5173/avatar.html --headed
+
+# Then in the browser window, you can:
+screenshot                  # take a screenshot
+console                     # read console output live
+eval "document.title"       # run JS
+snapshot                    # capture DOM snapshot
+```
+
+#### NPM shortcuts (after Vite is running)
+```bash
+cd web
+npm run debug:avatar        # playwright-cli open avatar.html --headed
+npm run debug:chat          # playwright-cli open main chat UI
+npm run debug:console       # live console output
+```
+
+#### Workflow for visual debugging
+1. Run `cd web && npm run dev` to start Vite
+2. In another terminal, run `npm run debug:avatar`
+3. A Chromium window opens — interact with the Live2D model
+4. Use `console` command in the debug terminal to see JS logs
+5. Close the browser when done; Vite continues running for code-reload

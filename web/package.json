@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "test:ui": "playwright test",
     "test:ui:headed": "playwright test --headed",
-    "verify": "npm run build && playwright test"
+    "verify": "npm run build && playwright test",
+    "debug:avatar": "playwright-cli open http://localhost:5173/avatar.html --headed",
+    "debug:chat": "playwright-cli open http://localhost:5173 --headed",
+    "debug:console": "playwright-cli console"
   },
   "dependencies": {
     "@pixi/app": "^7.4.3",
