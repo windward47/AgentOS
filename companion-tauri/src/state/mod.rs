@@ -332,15 +332,15 @@ pub async fn list_live2d_models() -> Result<Vec<String>, String> {
     // Excluded: Epsilon (.cmo3 format, not C3), ren (moc3 v6).
     let working: &[&str] = &[
         "haru/haru.model3.json",
-        "haru_greeter_pro_jp/haru_greeter_pro_jp/runtime/haru_greeter_t05.model3.json",
-        "hiyori_pro_zh/hiyori_pro_zh/runtime/hiyori_pro_t11.model3.json",
-        "kei_zh/kei_zh/kei_basic_free/runtime/kei_basic_free.model3.json",
-        "kei_zh/kei_zh/kei_vowels_pro/runtime/kei_vowels_pro.model3.json",
-        "mao_pro_zh/mao_pro_zh/runtime/mao_pro.model3.json",
-        "miara_pro_en/miara_pro_en/runtime/miara_pro_t03.model3.json",
-        "miku_pro_jp/miku_pro_jp/runtime/miku_sample_t04.model3.json",
-        "natori_pro_zh/natori_pro_zh/runtime/natori_pro_t06.model3.json",
-        "rice_pro_zh/rice_pro_zh/runtime/rice_pro_t03.model3.json",
+        "haru_greeter_pro_jp/runtime/haru_greeter_t05.model3.json",
+        "hiyori_pro_zh/runtime/hiyori_pro_t11.model3.json",
+        "kei_zh/kei_basic_free/runtime/kei_basic_free.model3.json",
+        "kei_zh/kei_vowels_pro/runtime/kei_vowels_pro.model3.json",
+        "mao_pro_zh/runtime/mao_pro.model3.json",
+        "miara_pro_en/runtime/miara_pro_t03.model3.json",
+        "miku_pro_jp/runtime/miku_sample_t04.model3.json",
+        "natori_pro_zh/runtime/natori_pro_t06.model3.json",
+        "rice_pro_zh/runtime/rice_pro_t03.model3.json",
     ];
     Ok(working.iter().map(|s| s.to_string()).collect())
 }
