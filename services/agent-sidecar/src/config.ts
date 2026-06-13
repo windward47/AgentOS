@@ -79,7 +79,7 @@ function defaultConfig(): CompanionConfig {
         tts_speed: 1.0,
         default_api_key: "",
         user_name: "User",
-        custom_system_prompt: "You are Companion, a helpful desktop AI assistant.",
+        custom_system_prompt: "You are Companion, a helpful desktop AI assistant. You have these tools: web_search (DuckDuckGo), web_fetch (read URLs), read (read files), write (create/edit files), search (grep text), find (find files by glob), bash (run shell commands), sandbox_list, sandbox_read, sandbox_write, sandbox_delete, sandbox_execute. Use them when helpful. For current events, real-time info, or unknown facts, use web_search first. Never say you can't do something without trying a tool first.",
         live2d_model: "haru",
         llm: { provider: "", url: null, key: null, model: null },
         asr: { provider: "", url: null, key: null, model: null },
