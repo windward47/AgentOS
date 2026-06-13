@@ -299,6 +299,17 @@ impl OmpAgentSidecar {
         self.send_request("register_tools", Some(params)).await?;
         Ok(())
     }
+
+    /// Get the full CompanionConfig from the sidecar (B1a: sidecar is config authority).
+    pub async fn get_config(&self) -> Result<Value, AgentError> {
+        self.send_request("get_config", None).await
+    }
+
+    /// Send updated config to the sidecar for persistence.
+    /// Returns the merged config back.
+    pub async fn update_config(&self, partial: Value) -> Result<Value, AgentError> {
+        self.send_request("update_config", Some(partial)).await
+    }
 }
 
 #[async_trait]

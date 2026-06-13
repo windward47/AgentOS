@@ -73,6 +73,18 @@ async function handleRequest(req: { id: string; method: string; params?: Record<
                 break;
             }
 
+            case "get_config": {
+                send(id, "result", agentManager.getCompanionConfig());
+                break;
+            }
+
+            case "update_config": {
+                const p = (params ?? {}) as Record<string, unknown>;
+                const updated = agentManager.updateCompanionConfig(p as any);
+                send(id, "result", updated);
+                break;
+            }
+
             case "register_tools": {
                 const p = (params ?? {}) as { tools?: Array<Record<string, unknown>>; sandbox_root?: string };
                 if (p.tools) {

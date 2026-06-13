@@ -76,6 +76,26 @@ impl ConfigState {
         let config = self.config.lock().await;
         self.config_manager.save(&config).ok();
     }
+
+    /// Pull config from sidecar (B1a: sidecar owns config.json).
+    pub async fn sync_from_sidecar(&self, agent: &OmpAgentSidecar) -> Result<(), String> {
+        let val = agent.get_config().await.map_err(|e| format!("get_config RPC: {e}"))?;
+        let cfg: CompanionConfig = serde_json::from_value(val)
+            .map_err(|e| format!("parse config: {e}"))?;
+        self.system_mode.store(cfg.system_mode, Ordering::Relaxed);
+        *self.config.lock().await = cfg;
+        Ok(())
+    }
+
+    /// Push config update to sidecar, get merged result back.
+    pub async fn push_to_sidecar(&self, agent: &OmpAgentSidecar, partial: serde_json::Value) -> Result<(), String> {
+        let val = agent.update_config(partial).await.map_err(|e| format!("update_config RPC: {e}"))?;
+        let cfg: CompanionConfig = serde_json::from_value(val)
+            .map_err(|e| format!("parse config: {e}"))?;
+        self.system_mode.store(cfg.system_mode, Ordering::Relaxed);
+        *self.config.lock().await = cfg;
+        Ok(())
+    }
 }
 
 
@@ -122,6 +142,8 @@ async fn do_chat(
     if !agent.agent.is_running().await {
         agent.agent.spawn().await
             .map_err(|e| format!("Sidecar spawn failed: {e}"))?;
+        // B1a: sync config from sidecar (now the single source of truth)
+        config.sync_from_sidecar(&agent.agent).await?;
     }
     if let Some(t) = tools {
         let cfg = config.config.lock().await;
@@ -231,11 +253,10 @@ pub async fn update_config(
     audit: tauri::State<'_, AuditState>,
     new_config: CompanionConfig,
 ) -> Result<(), String> {
-    {
-        let mut current = config.config.lock().await;
-        *current = new_config.clone();
-    }
-    config.save().await;
+    // B1a: sidecar owns config.json — push update to sidecar
+    let val = serde_json::to_value(&new_config).map_err(|e| format!("serialize: {e}"))?;
+    config.push_to_sidecar(&agent.agent, val).await?;
+
     let was_mode = config
         .system_mode
         .swap(new_config.system_mode, Ordering::SeqCst);

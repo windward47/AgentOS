@@ -3,7 +3,7 @@
  */
 import { Agent, type AgentEvent, type AgentTool } from "@oh-my-pi/pi-agent-core";
 import type { Api, Model } from "@oh-my-pi/pi-ai";
-import { buildPiModel, loadConfig, resolveModelRole } from "./config";
+import { buildPiModel, loadConfig, resolveModelRole, loadCompanionConfig, saveCompanionConfig, type CompanionConfig } from "./config";
 
 // ── DuckDuckGo web search (zero-config, always available) ─────────────
 
@@ -222,11 +222,13 @@ export class AgentManager {
     private agent: Agent;
     private model: Model<Api>;
     private apiKey: string;
+    private companionConfig: CompanionConfig;
     private currentAbortController: AbortController | null = null;
     private pendingPrompt: Promise<void> | null = null;
     private resolvePending: (() => void) | null = null;
 
     constructor() {
+        this.companionConfig = loadCompanionConfig();
         const config = loadConfig();
         const defaultRole = config.modelRoles?.default ?? "sensenova/mimo-v2.5";
         const resolved = resolveModelRole(defaultRole);
@@ -239,15 +241,27 @@ export class AgentManager {
     }
 
     private createAgent(): Agent {
+        const sp = this.companionConfig.custom_system_prompt
+            || "Companion — a helpful desktop AI assistant.";
         const agent = new Agent({
             initialState: {
-                systemPrompt: ["Companion — a helpful desktop AI assistant."],
+                systemPrompt: [sp],
                 model: this.model as any,
             },
             getApiKey: () => this.apiKey,
         });
         agent.setTools([WEB_SEARCH_TOOL, WEB_FETCH_TOOL, TOOL_READ, TOOL_WRITE, TOOL_SEARCH, TOOL_FIND, TOOL_BASH]);
         return agent;
+    }
+
+    getCompanionConfig(): CompanionConfig {
+        return this.companionConfig;
+    }
+
+    updateCompanionConfig(partial: Partial<CompanionConfig>): CompanionConfig {
+        this.companionConfig = { ...this.companionConfig, ...partial };
+        saveCompanionConfig(this.companionConfig);
+        return this.companionConfig;
     }
 
     getModelInfo(): { provider: string; model: string } {
