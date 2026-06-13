@@ -60,7 +60,6 @@ function tryTransition(to: VoiceState): boolean {
     (from === 'listening' && (to === 'processing' || to === 'idle')) ||
     (from === 'processing' && (to === 'idle' || to === 'speaking')) ||
     (from === 'speaking' && (to === 'idle' || to === 'listening'))
-  console.log(`[state] ${from} → ${to} ${ok ? '✅' : '❌'}`)
   if (ok) voiceState.value = to
   return ok
 }
@@ -136,7 +135,6 @@ async function startRecording() {
     audioChunks = []
     mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data) }
     mediaRecorder.onstop = async () => {
-      console.log('[PTT] onstop chunks=', audioChunks.length)
       analyserNode = null
       vadLevel.value = 0
       if (audioChunks.length === 0) { voiceState.value = 'idle'; return }
@@ -425,13 +423,19 @@ async function maybeInterrupt() {
       stopTTS()
       interruptSpeechStart = 0
       // Start recording for ASR
-      console.log('[INT] starting recorder')
       if (backgroundStream && tryTransition('listening')) {
+        // Kill PTT recorder so it doesn't keep firing onstop
+        if (autoVadRaf) { cancelAnimationFrame(autoVadRaf); autoVadRaf = 0 }
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+          mediaRecorder.ondataavailable = null  // prevent stale data
+          mediaRecorder.onstop = null           // prevent stale onstop
+          mediaRecorder.stop()
+        }
+        mediaRecorder = null
         interruptRecorder = new MediaRecorder(backgroundStream, { mimeType: 'audio/webm' })
         interruptChunks = []
         interruptRecorder.ondataavailable = (e) => { if (e.data.size > 0) interruptChunks.push(e.data) }
         interruptRecorder.onstop = async () => {
-          console.log('[INT] onstop chunks=', interruptChunks.length)
           if (interruptChunks.length === 0) { voiceState.value = 'idle'; return }
           voiceState.value = 'processing'
           const blob = new Blob(interruptChunks, { type: 'audio/webm' })
@@ -575,8 +579,6 @@ async function doBrowseScreenshot() {
           <p class="text-sm text-gray-400">Type or press {{ hotkey }} to speak</p>
         </div>
         <template v-for="(m, i) in messages" :key="i">
-          <!-- DEBUG role indicator -->
-          <div class="text-[9px] mb-0.5" :class="m.role === 'user' ? 'text-blue-300' : 'text-gray-300'">[{{i}}] {{m.role}}</div>
           <div v-if="m.role === 'user'" class="flex justify-end">
             <div class="max-w-[75%] rounded-2xl rounded-br-md bg-blue-500 text-white px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap">{{ m.content }}</div>
           </div>
