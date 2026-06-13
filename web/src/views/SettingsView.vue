@@ -79,6 +79,10 @@ async function detectModels(kind: 'llm' | 'asr' | 'tts') {
     if (models.length > 0 && !prov.model) prov.model = models[0]
   } catch (err: any) { modelLists.value[kind] = [String(err)] }
   finally { detecting.value[kind] = false }
+  // Auto-select first detected model as default voice for TTS
+  if (kind === 'tts' && modelLists.value.tts.length > 0) {
+    config.value!.tts_voice = modelLists.value.tts[0]
+  }
 }
 
 // ── Provider UI helpers ──
