@@ -267,6 +267,16 @@ Live2D 不应该和聊天 UI 挤在同一个 Vue 组件里。正确做法：
 | 3.x | 📋 | Emotion recognition + style system + MCP plugins + community store |
 | 4.x | 📋 | VR mode + cross-platform packaging + performance |
 
+## Technical Debt
+
+Open issues found during code review (2026-06-13):
+
+1. **Emotion prompt injected unconditionally** (`agent.ts:480-486`) — `chat()` appends ~200 chars of emotion tag + think tag guidance to user's custom system prompt on every call. Should be configurable (toggle in CompanionConfig) or only injected once on `createAgent()`.
+
+2. **`setModel()` creates new Agent losing pi-agent-core state** (`agent.ts:467`) — `this.agent = this.createAgent()` resets the internal Agent's conversation context. `messageHistory` array survives but pi-agent-core's `prompt()` can't leverage prior turns. Should re-feed history into the new Agent, or avoid recreating.
+
+3. **Poke hitTest coordinate drift at non-1x DPI** (`avatar/main.ts:~90`) — `(clientX - rect.left) * (renderer.width / rect.width)` assumes CSS pixels match canvas pixels. With `autoDensity: true` + `resolution: devicePixelRatio`, the conversion may shift. Should use PIXI's `app.renderer.plugins.interaction` or `event.data.getLocalPosition()`.
+
 ## Notes
 
 ## Al Agent风格
