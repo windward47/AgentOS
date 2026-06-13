@@ -93,12 +93,12 @@ pub async fn handle_voice_command(
             let companion_focused = app.get_webview_window("main")
                 .map(|w| w.is_focused().unwrap_or(false))
                 .unwrap_or(false);
-            // Write debug to file since terminal is too noisy
+            // Write debug to file
+            let log_dir = dirs::home_dir().unwrap_or_default().join(".companion").join("logs");
+            let _ = std::fs::create_dir_all(&log_dir);
             let _ = std::fs::write(
-                dirs::home_dir().unwrap_or_default().join(".companion").join("logs").join("voice_debug.log"),
-                format!("[{}] focused={} text_len={}\n", 
-                    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
-                    companion_focused, text.len()),
+                log_dir.join("voice_debug.log"),
+                format!("focused={} text_len={}\n", companion_focused, text.len()),
             );
 
             // Always emit to chat window (works even when chat is focused OR not)
