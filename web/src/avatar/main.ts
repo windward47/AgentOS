@@ -96,8 +96,9 @@ document.addEventListener('mousedown', (e) => {
     if (!hitName) return; // missed the model entirely
     console.log('[Haru] poke:', hitName);
     const expr = TAP_EXPRESSIONS[Math.floor(Math.random() * TAP_EXPRESSIONS.length)];
-    try { await (model as any).expression?.(expr); console.log('[Haru] expression:', expr); }
-    catch (e) { console.warn('[Haru] expression failed:', expr, e); }
+    Promise.resolve((model as any).expression?.(expr))
+      .then(() => console.log('[Haru] expression:', expr))
+      .catch((e: any) => console.warn('[Haru] expression failed:', expr, e));
   }
 });
 document.addEventListener('mousemove', (e) => {
