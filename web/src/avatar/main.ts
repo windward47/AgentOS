@@ -80,7 +80,7 @@ document.addEventListener('wheel', (e) => { e.preventDefault(); currentScale += 
 
 // Tap reaction — trigger a random expression (Haru has no dedicated tap motions)
 // Expressions F01-F08 are brief facial changes that auto-reset after ~1s
-const TAP_EXPRESSIONS = ["f01", "f02", "f03", "f04", "f05", "f06", "f07", "f08"];
+const TAP_EXPRESSIONS = ["F01", "F02", "F03", "F04", "F05", "F06", "F07", "F08"];
 
 // Middle-mouse drag to reposition the model within the window
 let dragModel = false, dragMx = 0, dragMy = 0, dragOx = 0, dragOy = 0;
@@ -95,9 +95,9 @@ document.addEventListener('mousedown', (e) => {
     const hitName = Array.isArray(raw) ? raw[0] : raw;
     if (!hitName) return; // missed the model entirely
     console.log('[Haru] poke:', hitName);
-    // Play a random expression for visual feedback
     const expr = TAP_EXPRESSIONS[Math.floor(Math.random() * TAP_EXPRESSIONS.length)];
-    try { (model as any).expression?.(expr); } catch {}
+    try { await (model as any).expression?.(expr); console.log('[Haru] expression:', expr); }
+    catch (e) { console.warn('[Haru] expression failed:', expr, e); }
   }
 });
 document.addEventListener('mousemove', (e) => {

@@ -168,15 +168,15 @@ export interface AgentCallbacks {
 
 // ── Emotion & think-tag parsing ────────────────────────────────────────
 
-/** Map emotion labels to Haru expression IDs (f01–f08). */
+/** Map emotion labels to Haru expression IDs (F01–F08). */
 const EMOTION_MAP: Record<string, string> = {
-    happy: "f01",
-    sad: "f02",
-    angry: "f03",
-    surprised: "f04",
-    shy: "f05",
-    fear: "f02",
-    joy: "f01",
+    happy: "F01",
+    sad: "F02",
+    angry: "F03",
+    surprised: "F04",
+    shy: "F05",
+    fear: "F02",
+    joy: "F01",
     neutral: "",
 };
 
