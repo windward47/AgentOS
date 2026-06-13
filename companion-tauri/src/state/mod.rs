@@ -329,7 +329,7 @@ pub async fn get_voice_state(voice: tauri::State<'_, VoiceState>) -> Result<Stri
 #[tauri::command]
 pub async fn list_live2d_models() -> Result<Vec<String>, String> {
     // Verified-compatible models (tested with Cubism SDK 5.1.0).
-    // Excluded: Epsilon (.cmo3 format, not C3), ren (moc3 v6).
+    // Excluded: Epsilon (.cmo3), ren (moc3 v6), miku (render crash).
     let working: &[&str] = &[
         "haru/haru.model3.json",
         "haru_greeter_pro_jp/runtime/haru_greeter_t05.model3.json",
@@ -338,7 +338,6 @@ pub async fn list_live2d_models() -> Result<Vec<String>, String> {
         "kei_zh/kei_vowels_pro/runtime/kei_vowels_pro.model3.json",
         "mao_pro_zh/runtime/mao_pro.model3.json",
         "miara_pro_en/runtime/miara_pro_t03.model3.json",
-        "miku_pro_jp/runtime/miku_sample_t04.model3.json",
         "natori_pro_zh/runtime/natori_pro_t06.model3.json",
         "rice_pro_zh/runtime/rice_pro_t03.model3.json",
     ];

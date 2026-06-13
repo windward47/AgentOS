@@ -82,6 +82,7 @@ document.addEventListener('dblclick', () => {
 });
 
 async function loadModel(path: string) {
+  // Remove old model first — prevents render loop from processing stale data
   if (model) { app.stage.removeChild(model as any); model = null; }
   const url = '/live2d/models/' + path;
   console.log('[Haru] Loading model:', url);
@@ -93,9 +94,11 @@ async function loadModel(path: string) {
     app.stage.addChild(m as any);
     model = m;
     currentModelPath = path;
+    // Re-hook parameters for the new model
+    hooked = false;
+    voiceState = 'idle'; tgtAngle = 0; tgtBrow = 0;
   } catch (err: any) {
     console.error('[Haru] Failed to load model:', url, err.message);
-    // Fall back to haru if loading fails
     if (path !== 'haru/haru.model3.json') {
       console.log('[Haru] Falling back to default model');
       await loadModel('haru/haru.model3.json');
