@@ -150,7 +150,11 @@ export async function transcribeLocal(audio: number[]): Promise<string> {
     const resp = await fetch("http://localhost:8000/v1/audio/transcriptions", { method: "POST", body: form });
     if (!resp.ok) throw new Error(`FunASR HTTP ${resp.status}`);
     const data: any = await resp.json();
-    return data.text?.trim() ?? "";
+    // SenseVoiceSmall returns "<|zh|><|NEUTRAL|><|Speech|><|woitn|>actual text"
+    let text: string = data.text?.trim() ?? "";
+    // Strip metadata tokens: everything between <| and |>, plus preceding language tag like "i<|zh|>"
+    text = text.replace(/^[a-z]*<\|[^|]+\|>/g, "").replace(/<\|[^|]+\|>/g, "").trim();
+    return text;
 }
 
 export async function synthesizeLocal(text: string, voice: string): Promise<number[]> {
