@@ -103,4 +103,28 @@ test.describe('Companion UI smoke tests', () => {
     await page.screenshot({ path: 'web/tests/screenshots/05-voice-ui.png', fullPage: true })
   })
 
+  test('chat messages have correct roles (user=blue, assistant=gray)', async ({ page }) => {
+    await page.goto('/')
+    await page.waitForLoadState('networkidle')
+
+    const input = page.locator('input[placeholder*="Message"]')
+    await input.fill('Say hello in exactly one word')
+    await input.press('Enter')
+
+    // Wait for response — look for the AI bubble (gray bg-gray-50, has AI icon)
+    const aiBubble = page.locator('.bg-gray-50').first()
+    await aiBubble.waitFor({ timeout: 30000 })
+
+    // Verify: user message in blue bubble, assistant in gray
+    const blueBubbles = page.locator('.bg-blue-500')
+    const grayBubbles = page.locator('.bg-gray-50')
+    expect(await blueBubbles.count()).toBeGreaterThanOrEqual(1)
+    expect(await grayBubbles.count()).toBeGreaterThanOrEqual(1)
+
+    // The AI bubble should NOT be inside a blue bubble
+    await expect(page.locator('.bg-blue-500 .bg-gray-50')).toHaveCount(0)
+
+    await page.screenshot({ path: 'tests/screenshots/06-message-roles.png', fullPage: true })
+  })
+
 })

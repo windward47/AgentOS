@@ -31,7 +31,7 @@ function buildWavHeader(dataLen: number): Buffer {
     return buf;
 }
 
-function f32ToWavBase64(samples: Float32Array | number[]): string {
+export function f32ToWavBase64(samples: Float32Array | number[]): string {
     const dataLen = samples.length * 2;
     const header = buildWavHeader(dataLen);
     const data = Buffer.alloc(dataLen);
