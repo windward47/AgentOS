@@ -113,6 +113,7 @@ async fn do_chat(
     // B1b: history is managed by sidecar; pass empty (sidecar has its own)
     let response = agent.agent.chat(&message, &[], Some(&system_prompt)).await
         .map_err(|e| format!("Agent error: {e}"))?;
+    log::info!("[do_chat] text len={}, emotions={:?}", response.text.len(), response.emotions);
     // Emit emotions to avatar window for Live2D expression
     if !response.emotions.is_empty() {
         let _ = app.emit("emotion_event", serde_json::json!({

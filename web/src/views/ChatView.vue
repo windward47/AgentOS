@@ -135,7 +135,10 @@ async function startRecording() {
         store.addMessage({ role: 'user', content: text })
         try {
           const reply = await chat(text)
+          console.log('[ChatView] voice → reply type:', typeof reply, 'len:', reply?.length, 'preview:', String(reply).slice(0, 80))
+          console.log('[ChatView] messages before:', store.messages.map(m => m.role))
           store.addMessage({ role: 'assistant', content: reply })
+          console.log('[ChatView] messages after:', store.messages.map(m => m.role))
         } catch (err: any) { store.addMessage({ role: 'assistant', content: String(err) }) }
         finally { store.setSending(false) }
       } catch (err: any) { showToast('ASR: ' + String(err)); console.error('ASR error:', err) }
