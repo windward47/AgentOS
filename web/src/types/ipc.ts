@@ -25,9 +25,6 @@ export interface GlobalVoiceConfig {
   inject_mode: string
   asr_engine: string
   tts_engine: string
-  tts_provider: string
-  tts_voice: string
-  tts_speed: number
 }
 
 export interface CompanionConfig {
