@@ -80,4 +80,4 @@ services/*
 # Playwright CLI output
 .playwright-cli/
 
-web/node_modules
+web/node_modulesweb/public/live2d/models/

@@ -324,23 +324,50 @@ pub async fn get_voice_state(voice: tauri::State<'_, VoiceState>) -> Result<Stri
     Ok(s.into())
 }
 
-/// List available Live2D models from web/public/live2d/models/.
+/// List available Live2D models from ~/.companion/models/ and web/public/live2d/models/.
 #[tauri::command]
 pub async fn list_live2d_models() -> Result<Vec<String>, String> {
-    // Verified-compatible models (tested with Cubism SDK 5.1.0).
-    // Excluded: Epsilon (.cmo3), ren (moc3 v6), miku (render crash).
-    let working: &[&str] = &[
-        "haru/haru.model3.json",
-        "haru_greeter_pro_jp/runtime/haru_greeter_t05.model3.json",
-        "hiyori_pro_zh/runtime/hiyori_pro_t11.model3.json",
-        "kei_zh/kei_basic_free/runtime/kei_basic_free.model3.json",
-        "kei_zh/kei_vowels_pro/runtime/kei_vowels_pro.model3.json",
-        "mao_pro_zh/runtime/mao_pro.model3.json",
-        "miara_pro_en/runtime/miara_pro_t03.model3.json",
-        "natori_pro_zh/runtime/natori_pro_t06.model3.json",
-        "rice_pro_zh/runtime/rice_pro_t03.model3.json",
-    ];
-    Ok(working.iter().map(|s| s.to_string()).collect())
+    let mut models = Vec::new();
+    let home = dirs::home_dir().unwrap_or_default();
+    let user_dir = home.join(".companion").join("models");
+
+    // Scan ~/.companion/models/ for model3.json files
+    if user_dir.exists() {
+        scan_models(&user_dir, &user_dir, &mut models);
+    }
+    // Also scan web/public/live2d/models/ (for bundled haru)
+    let base = std::env::current_dir().unwrap_or_default();
+    let root = if base.ends_with("companion-tauri") { base.parent().unwrap_or(&base).to_path_buf() } else { base };
+    let web_dir = root.join("web").join("public").join("live2d").join("models");
+    if web_dir.exists() {
+        scan_models(&web_dir, &web_dir, &mut models);
+    }
+
+    // Fallback
+    if models.is_empty() {
+        models.push("haru/haru.model3.json".into());
+    }
+    models.sort();
+    models.dedup();
+    Ok(models)
+}
+
+fn scan_models(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec<String>) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = path.file_name().unwrap_or_default().to_string_lossy();
+            if name.starts_with('.') { continue; }
+            if path.is_dir() {
+                scan_models(&path, base, out);
+            } else if name.ends_with(".model3.json") {
+                if let Ok(rel) = path.strip_prefix(base) {
+                    let r = rel.to_string_lossy().replace('\\', "/");
+                    if !out.contains(&r) { out.push(r); }
+                }
+            }
+        }
+    }
 }
 
 /// Tell the avatar window to switch to a different model.
