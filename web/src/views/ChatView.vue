@@ -6,15 +6,29 @@ import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 
 const { getConfig, updateConfig, chat, transcribeAudio, synthesizeAudio, setLipLevel, browseScreenshot } = useCompanion()
 
-/** Strip markdown syntax + think tags for TTS playback. */
+/** Strip markdown + nested delimiters for TTS playback.
+ *  Brackets [...], parentheses (...), and asterisks *...* are removed
+ *  with proper depth counting (won't mismatched-nest). */
 function stripForTTS(text: string): string {
-  return text
-    .replace(/<think>[\s\S]*?<\/think>/gi, '')   // remove think tags first
+  // Step 1: Remove nested delimiters with depth counting
+  let out = "";
+  let bracketDepth = 0, parenDepth = 0, starDepth = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '[') bracketDepth++;
+    else if (ch === ']' && bracketDepth > 0) { bracketDepth--; continue; }
+    else if (ch === '(') parenDepth++;
+    else if (ch === ')' && parenDepth > 0) { parenDepth--; continue; }
+    else if (ch === '*') { starDepth ^= 1; continue; } // toggle
+    else if (bracketDepth > 0 || parenDepth > 0 || starDepth > 0) continue;
+    out += ch;
+  }
+  // Step 2: Strip remaining markdown
+  return out
     .replace(/```[\s\S]*?```/g, '')
     .replace(/`([^`]+)`/g, '$1')
-    .replace(/[#*_~]{1,3}([^*#_~\n]+)[#*_~]{1,3}/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
+    .replace(/[#_~]{1,3}/g, '')
+    .replace(/!?\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/^>\s?/gm, '')
     .replace(/^[-*+]\s/gm, '')
     .replace(/^\d+\.\s/gm, '')
