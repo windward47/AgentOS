@@ -159,10 +159,25 @@ pub async fn handle_voice_command(
 
             log::info!("[GlobalVoice] TTS synthesized {} f32 samples", pcm_f32.len());
             app.state::<VoiceState>().is_speaking.store(true, Ordering::Release);
-            let sample_rate = (24000.0 * speed) as u32;
-            animate_lip_sync(&pcm_f32, sample_rate, app);
 
-            let i16 = f32_to_i16(&pcm_f32);
+            // Apply speed to PCM before playback
+            let pcm_sped: Vec<f32> = if (speed - 1.0).abs() > 0.01 {
+                let step = speed as f64;
+                let new_len = (pcm_f32.len() as f64 / step) as usize;
+                let mut out = Vec::with_capacity(new_len);
+                for i in 0..new_len {
+                    let src = (i as f64 * step) as usize;
+                    out.push(pcm_f32[src.min(pcm_f32.len() - 1)]);
+                }
+                out
+            } else {
+                pcm_f32
+            };
+
+            let sample_rate = (24000.0 * speed) as u32;
+            animate_lip_sync(&pcm_sped, sample_rate, app);
+
+            let i16 = f32_to_i16(&pcm_sped);
             match pcm_i16_to_wav(&i16, 24000) {
                 Ok(wav) => {
                     log::info!("[GlobalVoice] WAV encoded {} bytes, starting playback", wav.len());
