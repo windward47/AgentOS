@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
+import { useCompanion } from '../composables/useCompanion'
 import { listen } from '@tauri-apps/api/event'
 
 interface ModelEntry {
@@ -19,6 +19,13 @@ interface DownloadProgress {
   message?: string
 }
 
+const {
+  getConfig, updateConfig,
+  getAvatarVisible, setAvatarVisible, setAvatarAlwaysOnTop,
+  listLive2dModels, setLive2dModel, resetAvatarPosition,
+  downloadModel,
+} = useCompanion()
+
 const avatarVisible = ref(true)
 const alwaysOnTop = ref(true)
 const selectedModel = ref('haru')
@@ -32,13 +39,13 @@ const downloadError = ref('')
 let unlisten: (() => void) | null = null
 
 onMounted(async () => {
-  try { avatarVisible.value = await invoke<boolean>('get_avatar_visible') } catch {}
+  try { avatarVisible.value = await getAvatarVisible() } catch {}
   try {
-    const cfg = await invoke<{ live2d_model: string }>('get_config')
+    const cfg = await getConfig()
     if (cfg.live2d_model) selectedModel.value = cfg.live2d_model
   } catch {}
   try {
-    modelList.value = await invoke<string[]>('list_live2d_models')
+    modelList.value = await listLive2dModels()
   } catch {}
   try {
     const resp = await fetch('/models-manifest.json')
@@ -76,7 +83,7 @@ function doDownload(entry: ModelEntry) {
   downloadingId.value = entry.id
   downloadPercent.value = 0
   downloadError.value = ''
-  invoke('cmd_download_model', { url: entry.url, modelId: entry.id }).catch(e => {
+  downloadModel(entry.url, entry.id).catch(e => {
     downloadError.value = String(e)
     downloadingId.value = null
   })
@@ -84,31 +91,31 @@ function doDownload(entry: ModelEntry) {
 
 async function refreshModels() {
   try {
-    modelList.value = await invoke<string[]>('list_live2d_models')
+    modelList.value = await listLive2dModels()
   } catch {}
 }
 
 function toggleAvatar() {
   avatarVisible.value = !avatarVisible.value
-  invoke('set_avatar_visible', { visible: avatarVisible.value }).catch(() => {})
+  setAvatarVisible(avatarVisible.value).catch(() => {})
 }
 
 function toggleAlwaysOnTop() {
   alwaysOnTop.value = !alwaysOnTop.value
-  invoke('set_avatar_always_on_top', { onTop: alwaysOnTop.value }).catch(() => {})
+  setAvatarAlwaysOnTop(alwaysOnTop.value).catch(() => {})
 }
 
 function switchModel(path: string) {
   selectedModel.value = path
-  invoke<any>('get_config').then(cfg => {
+  getConfig().then(cfg => {
     cfg.live2d_model = path
-    invoke('update_config', { newConfig: cfg }).catch(() => {})
+    updateConfig(cfg).catch(() => {})
   }).catch(() => {})
-  invoke('set_live2d_model', { modelPath: path }).catch(() => {})
+  setLive2dModel(path).catch(() => {})
 }
 
 function resetAvatar() {
-  invoke('reset_avatar_position').catch(() => {})
+  resetAvatarPosition().catch(() => {})
 }
 
 function modelLabel(path: string) {
@@ -160,7 +167,6 @@ function storeLabel(entry: ModelEntry): string {
           </div>
 
           <div class="ml-3 flex-shrink-0">
-            <!-- Already downloaded -->
             <span v-if="isDownloaded(entry.id)"
               class="inline-flex items-center gap-1 text-xs text-green-600 font-medium">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -169,7 +175,6 @@ function storeLabel(entry: ModelEntry): string {
               Installed
             </span>
 
-            <!-- Downloading -->
             <div v-else-if="downloadingId === entry.id" class="flex items-center gap-2">
               <div class="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                 <div class="h-full bg-blue-500 rounded-full transition-all duration-300"
@@ -178,7 +183,6 @@ function storeLabel(entry: ModelEntry): string {
               <span class="text-xs text-gray-500">{{ downloadPercent }}%</span>
             </div>
 
-            <!-- Download button -->
             <button v-else @click="doDownload(entry)"
               class="px-3 py-1 text-xs rounded-lg border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors">
               Download

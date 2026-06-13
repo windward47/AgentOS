@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
+import { useCompanion } from '../composables/useCompanion'
 import { useRouter } from 'vue-router'
 import type { CompanionConfig, ProviderConfig } from '../types/ipc'
 
 const router = useRouter()
+const { getConfig, updateConfig, listModels } = useCompanion()
 const config = ref<CompanionConfig | null>(null)
 const saving = ref(false)
 const saved = ref(false)
@@ -27,7 +28,7 @@ onMounted(async () => {
       inject_mode: 'keyboard', asr_engine: 'mimo', tts_engine: 'mimo-tts',
     },
   }
-  try { config.value = await invoke<CompanionConfig>('get_config') } catch {}
+  try { config.value = await getConfig() } catch {}
   // Pre-fill provider fields for any preset that is selected
   if (config.value) {
     onProviderChange('llm')
@@ -46,7 +47,7 @@ async function save() {
       if (!existing) config.value.custom_providers.push({ ...config.value[kind] })
     }
   }
-  try { await invoke('update_config', { newConfig: config.value }); saved.value = true; setTimeout(() => saved.value = false, 2000) }
+  try { await updateConfig(config.value); saved.value = true; setTimeout(() => saved.value = false, 2000) }
   catch {} finally { saving.value = false }
 }
 
@@ -73,7 +74,7 @@ async function detectModels(kind: 'llm' | 'asr' | 'tts') {
   detecting.value[kind] = true
   modelLists.value[kind] = []
   try {
-    const models = await invoke<string[]>('list_models', { baseUrl: prov.url, apiKey: prov.key || '' })
+    const models = await listModels(prov.url, prov.key || '')
     modelLists.value[kind] = models
     if (models.length > 0 && !prov.model) prov.model = models[0]
   } catch (err: any) { modelLists.value[kind] = [String(err)] }

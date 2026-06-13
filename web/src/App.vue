@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
+import { useCompanion } from './composables/useCompanion'
 import { useRouter, useRoute } from 'vue-router'
 
 const router = useRouter()
 const route = useRoute()
 const mode = ref(false)
 const collapsed = ref(false)
+const { getConfig } = useCompanion()
 
 const active = computed(() => {
   if (route.path === '/settings') return 'settings'
@@ -17,7 +18,7 @@ const active = computed(() => {
 const isAvatarWindow = computed(() => route.path === '/avatar')
 
 onMounted(async () => {
-  try { const c: any = await invoke('get_config'); mode.value = c.system_mode } catch {}
+  try { const c = await getConfig(); mode.value = c.system_mode } catch {}
 })
 
 function go(to: string) { router.push(to) }

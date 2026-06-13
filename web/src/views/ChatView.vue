@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
+import { useCompanion } from '../composables/useCompanion'
 import { useAppStore } from '../stores/app'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
+
+const { getConfig, updateConfig, chat, transcribeAudio, synthesizeAudio, setLipLevel, browseScreenshot } = useCompanion()
 
 /** Strip markdown syntax for TTS playback (remove #, *, `, [], (), >, --- etc.) */
 function stripMarkdown(text: string): string {
@@ -126,12 +128,12 @@ async function startRecording() {
       const pcm = await blobToPCM(blob)
       if (pcm.length === 0) return
       try {
-        const text = await invoke<string>('transcribe_audio', { audio: Array.from(pcm) })
+        const text = await transcribeAudio(Array.from(pcm))
         if (!text) return
         store.setSending(true)
         store.addMessage({ role: 'user', content: text })
         try {
-          const reply = await invoke<string>('chat', { message: text })
+          const reply = await chat(text)
           store.addMessage({ role: 'assistant', content: reply })
         } catch (err: any) { store.addMessage({ role: 'assistant', content: String(err) }) }
         finally { store.setSending(false) }
@@ -179,7 +181,7 @@ async function startBackgroundVAD() {
 onMounted(() => {
   startBackgroundVAD()
   // Load voice preferences from config
-  invoke<{ voice_mode: string; tts_voice: string; tts_speed: number; tts_auto_play: boolean }>('get_config').then(c => {
+  getConfig().then(c => {
     if (c.voice_mode === 'auto' || c.voice_mode === 'ptt') voiceMode.value = c.voice_mode
     if (c.tts_voice) ttsVoice.value = c.tts_voice
     if (c.tts_speed) ttsSpeed.value = c.tts_speed
@@ -278,13 +280,13 @@ async function playTTS(text: string, msgIdx: number) {
 
   try {
     // Synthesize first chunk immediately
-    let pcm = await invoke<number[]>('synthesize_audio', { text: chunks[0], voice: ttsVoice.value })
+    let pcm = await synthesizeAudio(chunks[0], ttsVoice.value)
     if (!pcm || pcm.length === 0) { playingId.value = null; return }
 
     // Start pre-fetching second chunk while playing first
     let nextPcm: number[] | null = null
     if (chunks.length > 1) {
-      invoke<number[]>('synthesize_audio', { text: chunks[1], voice: ttsVoice.value })
+      synthesizeAudio(chunks[1], ttsVoice.value)
         .then(p => { nextPcm = p }).catch(() => {})
     }
 
@@ -301,7 +303,7 @@ async function playTTS(text: string, msgIdx: number) {
         // Pre-fetch next
         nextPcm = null
         if (ci + 1 < chunks.length) {
-          invoke<number[]>('synthesize_audio', { text: chunks[ci + 1], voice: ttsVoice.value })
+          synthesizeAudio(chunks[ci + 1], ttsVoice.value)
             .then(p => { nextPcm = p }).catch(() => {})
         }
       }
@@ -324,11 +326,11 @@ async function playTTS(text: string, msgIdx: number) {
         if (!audioCtx) { clearInterval(lipIv); return }
         const elapsed = (audioCtx.currentTime - startTime) * 1000 // ms
         const idx = Math.floor((elapsed / 1000) * 16000)
-        if (idx >= pcm!.length) { clearInterval(lipIv); invoke('set_lip_level', { level: 0 }).catch(() => {}); return }
+        if (idx >= pcm!.length) { clearInterval(lipIv); setLipLevel(0).catch(() => {}); return }
         const s = Math.max(0, idx - 480), e = Math.min(pcm!.length, idx + 480)
         let sum = 0; for (let j = s; j < e; j++) sum += pcm![j] * pcm![j]
         const rms = Math.sqrt(sum / (e - s))
-        invoke('set_lip_level', { level: Math.min(rms * 3, 1.0) }).catch(() => {})
+        setLipLevel(Math.min(rms * 3, 1.0)).catch(() => {})
       }, 40)
 
       // Wait for playback to finish
@@ -336,7 +338,7 @@ async function playTTS(text: string, msgIdx: number) {
 
       // Cleanup
       clearInterval(lipIv)
-      invoke('set_lip_level', { level: 0 }).catch(() => {})
+      setLipLevel(0).catch(() => {})
     }
 
     playingId.value = null
@@ -361,7 +363,7 @@ async function send() {
   input.value = ''; store.setSending(true)
   store.addMessage({ role: 'user', content: text })
   try {
-    const reply = await invoke<string>('chat', { message: text })
+    const reply = await chat(text)
     store.addMessage({ role: 'assistant', content: reply })
   } catch (err: any) { store.addMessage({ role: 'assistant', content: String(err) }) }
   finally { store.setSending(false) }
@@ -409,12 +411,12 @@ async function maybeInterrupt() {
           const pcm = await blobToPCM(blob)
           if (pcm.length === 0) return
           try {
-            const text = await invoke<string>('transcribe_audio', { audio: Array.from(pcm) })
+            const text = await transcribeAudio(Array.from(pcm))
             if (!text) return
             store.setSending(true)
             store.addMessage({ role: 'user', content: text })
             try {
-              const reply = await invoke<string>('chat', { message: text })
+              const reply = await chat(text)
               store.addMessage({ role: 'assistant', content: reply })
             } catch (err: any) { store.addMessage({ role: 'assistant', content: String(err) }) }
             finally { store.setSending(false) }
@@ -463,16 +465,16 @@ onBeforeUnmount(() => {
 // Persist TTS voice + speed changes to config
 watch(ttsVoice, async (val) => {
   try {
-    const c = await invoke<any>('get_config')
+    const c = await getConfig()
     c.tts_voice = val
-    await invoke('update_config', { newConfig: c })
+    await updateConfig(c)
   } catch {}
 })
 watch(ttsSpeed, async (val) => {
   try {
-    const c = await invoke<any>('get_config')
+    const c = await getConfig()
     c.tts_speed = val
-    await invoke('update_config', { newConfig: c })
+    await updateConfig(c)
   } catch {}
 })
 
@@ -486,13 +488,13 @@ const browseUrl = ref('')
 const browseResult = ref('')
 const browsing = ref(false)
 
-async function browseScreenshot() {
+async function doBrowseScreenshot() {
   const url = browseUrl.value.trim()
   if (!url || browsing.value) return
   const target = url.startsWith('http') ? url : `https://${url}`
   browsing.value = true; browseResult.value = ''
   try {
-    const b64 = await invoke<string>('browse_screenshot', { url: target })
+    const b64 = await browseScreenshot(target)
     browseResult.value = b64
   } catch (err: any) {
     store.addMessage({ role: 'assistant', content: '🌐 ' + String(err) })
@@ -579,8 +581,8 @@ async function browseScreenshot() {
         <div class="flex items-center gap-2">
           <input v-model="browseUrl" type="text" placeholder="https://example.com"
             class="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-blue-300 transition-colors"
-            @keydown.enter="browseScreenshot" />
-          <button @click="browseScreenshot" :disabled="browsing"
+            @keydown.enter="doBrowseScreenshot" />
+          <button @click="doBrowseScreenshot" :disabled="browsing"
             class="shrink-0 text-xs px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 disabled:opacity-30 transition-colors">
             {{ browsing ? '...' : '🌐 Screenshot' }}
           </button>
