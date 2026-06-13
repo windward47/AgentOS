@@ -181,7 +181,8 @@ pub async fn transcribe_audio(
     audio: Vec<f32>,
 ) -> Result<String, String> {
     if !agent.agent.is_running().await {
-        return Err("Sidecar not running".into());
+        agent.agent.spawn().await.map_err(|e| format!("spawn: {e}"))?;
+        config.sync_from_sidecar(&agent.agent).await?;
     }
     let cfg = config.config.lock().await;
     let api_key = resolve_provider_key(&cfg.asr, &cfg.default_api_key);
@@ -200,7 +201,8 @@ pub async fn synthesize_audio(
     voice: Option<String>,
 ) -> Result<Vec<f32>, String> {
     if !agent.agent.is_running().await {
-        return Err("Sidecar not running".into());
+        agent.agent.spawn().await.map_err(|e| format!("spawn: {e}"))?;
+        config.sync_from_sidecar(&agent.agent).await?;
     }
     let cfg = config.config.lock().await;
     let v = voice.unwrap_or_else(|| cfg.tts_voice.clone());
