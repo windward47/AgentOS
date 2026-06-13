@@ -350,7 +350,20 @@ fn find_model3_json(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec
                 find_model3_json(&path, base, out);
             } else if name.ends_with(".model3.json") {
                 if let Ok(rel) = path.strip_prefix(base) {
-                    out.push(rel.to_string_lossy().replace('\\', "/"));
+                    let rel_str = rel.to_string_lossy().replace('\\', "/");
+                    // Skip nested runtime/ sub-entries when a sibling .model3.json exists closer to root
+                    let parent_dir = rel.parent().unwrap_or(rel);
+                    let parent_name = parent_dir.file_name().unwrap_or_default().to_string_lossy();
+                    if parent_name == "runtime" {
+                        // Check if there's a model3.json at a higher level for this model
+                        let grandparent = parent_dir.parent().unwrap_or(parent_dir);
+                        let already = out.iter().any(|m| m.starts_with(&grandparent.to_string_lossy().replace('\\', "/")));
+                        if already { continue; }
+                    }
+                    // Skip if path goes too deep (indicates duplicate runtime copy)
+                    let depth = rel_str.matches('/').count();
+                    if depth > 3 { continue; }
+                    out.push(rel_str);
                 }
             }
         }

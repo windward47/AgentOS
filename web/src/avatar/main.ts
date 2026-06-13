@@ -83,14 +83,24 @@ document.addEventListener('dblclick', () => {
 
 async function loadModel(path: string) {
   if (model) { app.stage.removeChild(model as any); model = null; }
-  currentModelPath = path;
   const url = '/live2d/models/' + path;
   console.log('[Haru] Loading model:', url);
-  model = await Live2DModel.from(url, { autoUpdate: true, autoInteract: false });
-  model.anchor.set(0.5, 0.5);
-  model.x = app.renderer.width * 0.34; model.y = app.renderer.height * 0.34;
-  model.scale.set(currentScale);
-  app.stage.addChild(model as any);
+  try {
+    const m = await Live2DModel.from(url, { autoUpdate: true, autoInteract: false });
+    m.anchor.set(0.5, 0.5);
+    m.x = app.renderer.width * 0.34; m.y = app.renderer.height * 0.34;
+    m.scale.set(currentScale);
+    app.stage.addChild(m as any);
+    model = m;
+    currentModelPath = path;
+  } catch (err: any) {
+    console.error('[Haru] Failed to load model:', url, err.message);
+    // Fall back to haru if loading fails
+    if (path !== 'haru/haru.model3.json') {
+      console.log('[Haru] Falling back to default model');
+      await loadModel('haru/haru.model3.json');
+    }
+  }
 }
 
 async function init() {

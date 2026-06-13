@@ -44,12 +44,17 @@ function resetAvatar() {
 }
 
 function modelLabel(path: string) {
-  // Extract readable name: "haru/haru.model3.json" → "Haru"
+  // Extract meaningful name from path like "Epsilon/runtime/Epsilon.model3.json" → "Epsilon"
+  // or "mao_pro_zh/mao_pro_zh/runtime/mao_pro.model3.json" → "Mao Pro"
   const parts = path.split('/')
-  const name = parts[parts.length - 1].replace('.model3.json', '')
-  const dir = parts.length > 1 ? parts[parts.length - 2] : ''
-  // Capitalize first letter
-  return (dir || name).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  // Use the first meaningful non-runtime directory name
+  const dir = parts[0] || ''
+  // Clean up: remove _zh/_jp/_en suffixes, replace underscores with spaces, capitalize
+  return dir
+    .replace(/_zh$/, '').replace(/_jp$/, '').replace(/_en$/, '').replace(/_pro$/, ' Pro')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .trim()
 }
 </script>
 
