@@ -31,8 +31,10 @@ async function duckDuckGoSearch(query: string) {
 
 // ── File & system tools (Bun native) ───────────────────────────────────
 
-import { readFileSync, writeFileSync, existsSync, unlinkSync, rmdirSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, unlinkSync, rmdirSync, statSync, mkdirSync } from "node:fs";
 import { execSync } from "node:child_process";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { Glob } from "bun";
 
 const TOOL_READ: AgentTool = {
@@ -212,6 +214,12 @@ export function emotionPromptFragment(): string {
     return `You can add emotion tags to your responses to control your facial expression. Available tags: [${tags}]. Use them naturally — like "[happy] Hello!" or "[surprised] That's interesting! [smirk] But I have a secret.".`;
 }
 
+/** Prompt to convert math/symbols to spoken form for natural TTS output. */
+export const SPEAKABLE_PROMPT = `Make your responses speakable by TTS. Convert math formulas, numbers, and symbols to their spoken form (e.g., "5x^2 + 3x - 2" → "five X squared plus three X minus two", "$50.25" → "fifty dollars and twenty-five cents", "H₂O" → "H two O"). Avoid markdown formatting symbols in spoken content.`;
+
+/** Prompt to make tool calling decisive — use tools without asking. */
+export const TOOL_GUIDANCE_PROMPT = `If a tool is needed, proactively use it without asking the user directly. You can use at most one sentence to explain before using a tool.`;
+
 function makeSandboxTools(sandboxRoot: string): AgentTool[] {
     const safe = (rel: string) => sandboxResolve(rel || ".", sandboxRoot);
 
@@ -378,6 +386,7 @@ export class AgentManager {
     private apiKey: string;
     private companionConfig: CompanionConfig;
     private messageHistory: Array<{ role: string; content: string }> = [];
+    private convDir: string;
     private currentAbortController: AbortController | null = null;
     private pendingPrompt: Promise<void> | null = null;
     private resolvePending: (() => void) | null = null;
@@ -392,6 +401,8 @@ export class AgentManager {
         }
         this.model = buildPiModel(resolved);
         this.apiKey = resolved.providerConfig.apiKey ?? "";
+        this.convDir = join(homedir(), ".companion", "conversations");
+        this.loadConversation();
         this.agent = this.createAgent();
     }
 
@@ -471,20 +482,37 @@ export class AgentManager {
     clearHistory(): void {
         this.messageHistory = [];
         this.agent.clearMessages();
+        try { unlinkSync(join(this.convDir, "current.json")); } catch {}
     }
 
     getHistory(): Array<{ role: string; content: string }> {
         return this.messageHistory;
     }
 
+    private saveConversation(): void {
+        try {
+            if (!existsSync(this.convDir)) mkdirSync(this.convDir, { recursive: true });
+            writeFileSync(join(this.convDir, "current.json"), JSON.stringify(this.messageHistory, null, 2), "utf-8");
+        } catch {}
+    }
+
+    private loadConversation(): void {
+        try {
+            const path = join(this.convDir, "current.json");
+            if (existsSync(path)) {
+                this.messageHistory = JSON.parse(readFileSync(path, "utf-8"));
+            }
+        } catch {}
+    }
+
     async chat(message: string, _history?: Array<{ role: string; content: string }>, systemPrompt?: string): Promise<{ text: string; history: Array<{ role: string; content: string }>; emotions?: string[] }> {
-        // Inject emotion + think-tag guidance into system prompt
+        // Inject emotion + think-tag + speakable + tool guidance into system prompt
         const emotionPrompt = emotionPromptFragment();
         const thinkPrompt = " You can also wrap inner thoughts in <think>...</think> tags — they'll be shown but not spoken.";
-        const enhancedPrompt = systemPrompt
-            ? `${systemPrompt}\n\n${emotionPrompt}${thinkPrompt}`
-            : `${emotionPrompt}${thinkPrompt}`;
-        this.agent.setSystemPrompt([enhancedPrompt]);
+        const base = systemPrompt
+            ? `${systemPrompt}\n\n${emotionPrompt}${thinkPrompt}\n\n${SPEAKABLE_PROMPT}\n\n${TOOL_GUIDANCE_PROMPT}`
+            : `${emotionPrompt}${thinkPrompt}\n\n${SPEAKABLE_PROMPT}\n\n${TOOL_GUIDANCE_PROMPT}`;
+        this.agent.setSystemPrompt([base]);
 
         return new Promise<{ text: string; history: Array<{ role: string; content: string }>; emotions?: string[] }>((resolve, reject) => {
             let fullText = "";
@@ -503,6 +531,7 @@ export class AgentManager {
                     if (this.messageHistory.length > 50) {
                         this.messageHistory = this.messageHistory.slice(-50);
                     }
+                    this.saveConversation();
                     resolve({
                         text,
                         history: this.messageHistory,
