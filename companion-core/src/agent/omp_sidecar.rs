@@ -304,6 +304,12 @@ impl OmpAgentSidecar {
     pub async fn update_config(&self, partial: Value) -> Result<Value, AgentError> {
         self.send_request("update_config", Some(partial)).await
     }
+
+    /// Send a unified agent action (B1d event bus).
+    pub async fn agent_action(&self, action_type: &str, payload: Value) -> Result<Value, AgentError> {
+        let params = serde_json::json!({ "type": action_type, "payload": payload });
+        self.send_request("agent_action", Some(params)).await
+    }
 }
 
 #[async_trait]

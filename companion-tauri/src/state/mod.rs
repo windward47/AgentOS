@@ -126,6 +126,24 @@ pub async fn chat(
     do_chat(&agent, &config, message).await
 }
 
+/// B1d: unified agent action — routes to sidecar, single IPC for all agent operations.
+#[tauri::command]
+pub async fn agent_action(
+    agent: tauri::State<'_, AgentState>,
+    config: tauri::State<'_, ConfigState>,
+    action_type: String,
+    payload: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    if !agent.agent.is_running().await {
+        agent.agent.spawn().await
+            .map_err(|e| format!("Sidecar spawn failed: {e}"))?;
+        config.sync_from_sidecar(&agent.agent).await?;
+    }
+    let result = agent.agent.agent_action(&action_type, payload).await
+        .map_err(|e| format!("agent_action: {e}"))?;
+    Ok(result)
+}
+
 #[tauri::command]
 pub async fn get_history(
     agent: tauri::State<'_, AgentState>,

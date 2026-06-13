@@ -96,6 +96,52 @@ async function handleRequest(req: { id: string; method: string; params?: Record<
                 break;
             }
 
+            case "agent_action": {
+                // B1d: unified event-based action routing
+                const p = (params ?? {}) as { type?: string; payload?: Record<string, unknown> };
+                switch (p.type) {
+                    case "chat": {
+                        const result = await agentManager.chat(
+                            (p.payload?.message as string) || "",
+                            (p.payload?.history as any) || [],
+                            p.payload?.system_prompt as string | undefined,
+                        );
+                        send(id, "result", result);
+                        break;
+                    }
+                    case "get_history": {
+                        send(id, "result", { history: agentManager.getHistory() });
+                        break;
+                    }
+                    case "clear_history": {
+                        agentManager.clearHistory();
+                        send(id, "result", { ok: true });
+                        break;
+                    }
+                    case "get_config": {
+                        send(id, "result", agentManager.getCompanionConfig());
+                        break;
+                    }
+                    case "update_config": {
+                        const updated = agentManager.updateCompanionConfig(p.payload as any);
+                        send(id, "result", updated);
+                        break;
+                    }
+                    // ASR/TTS/browse: handled by Rust for now (respond with forwarded marker)
+                    case "transcribe_audio":
+                    case "synthesize_audio":
+                    case "browse_screenshot": {
+                        send(id, "result", { forwarded: true, type: p.type, payload: p.payload });
+                        break;
+                    }
+                    default: {
+                        send(id, "error", { message: `Unknown agent action: ${p.type}` });
+                        break;
+                    }
+                }
+                break;
+            }
+
             default: {
                 send(id, "error", { message: `Unknown method: ${method}` });
                 break;

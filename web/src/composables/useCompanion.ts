@@ -54,6 +54,12 @@ export function useCompanion() {
     return invoke('cmd_download_model', { url, modelId })
   }
 
+  // ── B1d: unified event bus ────────────────────────────────────────
+
+  function sendAction(type: string, payload: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+    return invoke<Record<string, unknown>>('agent_action', { actionType: type, payload })
+  }
+
   function listLive2dModels(): Promise<string[]> {
     return invoke<string[]>('list_live2d_models')
   }
@@ -88,6 +94,7 @@ export function useCompanion() {
     browseScreenshot,
     listModels,
     downloadModel,
+    sendAction,
     listLive2dModels,
     setAvatarVisible,
     getAvatarVisible,
