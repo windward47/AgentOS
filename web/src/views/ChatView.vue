@@ -55,12 +55,14 @@ type VoiceState = 'idle' | 'listening' | 'processing' | 'speaking'
 const voiceState = ref<VoiceState>('idle')
 function tryTransition(to: VoiceState): boolean {
   const from = voiceState.value
-  // Allowed transitions:
-  if (from === 'idle' && (to === 'listening' || to === 'speaking')) { voiceState.value = to; return true }
-  if (from === 'listening' && (to === 'processing' || to === 'idle')) { voiceState.value = to; return true }
-  if (from === 'processing' && (to === 'idle' || to === 'speaking')) { voiceState.value = to; return true }
-  if (from === 'speaking' && (to === 'idle' || to === 'listening')) { voiceState.value = to; return true }
-  return false
+  const ok = 
+    (from === 'idle' && (to === 'listening' || to === 'speaking')) ||
+    (from === 'listening' && (to === 'processing' || to === 'idle')) ||
+    (from === 'processing' && (to === 'idle' || to === 'speaking')) ||
+    (from === 'speaking' && (to === 'idle' || to === 'listening'))
+  console.log(`[state] ${from} → ${to} ${ok ? '✅' : '❌'}`)
+  if (ok) voiceState.value = to
+  return ok
 }
 // ── Auto-stop VAD state ──
 let autoVadRaf = 0
@@ -134,6 +136,7 @@ async function startRecording() {
     audioChunks = []
     mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data) }
     mediaRecorder.onstop = async () => {
+      console.log('[PTT] onstop chunks=', audioChunks.length)
       analyserNode = null
       vadLevel.value = 0
       if (audioChunks.length === 0) { voiceState.value = 'idle'; return }
@@ -422,11 +425,13 @@ async function maybeInterrupt() {
       stopTTS()
       interruptSpeechStart = 0
       // Start recording for ASR
+      console.log('[INT] starting recorder')
       if (backgroundStream && tryTransition('listening')) {
         interruptRecorder = new MediaRecorder(backgroundStream, { mimeType: 'audio/webm' })
         interruptChunks = []
         interruptRecorder.ondataavailable = (e) => { if (e.data.size > 0) interruptChunks.push(e.data) }
         interruptRecorder.onstop = async () => {
+          console.log('[INT] onstop chunks=', interruptChunks.length)
           if (interruptChunks.length === 0) { voiceState.value = 'idle'; return }
           voiceState.value = 'processing'
           const blob = new Blob(interruptChunks, { type: 'audio/webm' })
