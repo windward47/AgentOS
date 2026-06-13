@@ -78,10 +78,39 @@ let isPinned = true; // default from tauri.conf.json: alwaysOnTop=true
 
 document.addEventListener('wheel', (e) => { e.preventDefault(); currentScale += e.deltaY > 0 ? -0.02 : 0.02; currentScale = Math.max(0.06, Math.min(0.50, currentScale)); if (model) model.scale.set(currentScale); try { localStorage.setItem('avatar_scale', String(currentScale)); } catch {} }, { passive: false });
 
+// Tap motion definitions — which motion to play when a HitArea is clicked
+const TAP_MOTIONS: Record<string, { group: string; index: number }> = {
+  HitAreaHead: { group: "", index: 1 },
+  HitAreaBody: { group: "", index: 2 },
+};
+
 // Middle-mouse drag to reposition the model within the window
 let dragModel = false, dragMx = 0, dragMy = 0, dragOx = 0, dragOy = 0;
+let pokeAnim = 0; // scale bounce animation frame
 document.addEventListener('mousedown', (e) => {
-  if (e.button === 1) { e.preventDefault(); dragModel = true; dragMx = e.clientX; dragMy = e.clientY; dragOx = model?.x ?? 0; dragOy = model?.y ?? 0; }
+  if (e.button === 1) { e.preventDefault(); dragModel = true; dragMx = e.clientX; dragMy = e.clientY; dragOx = model?.x ?? 0; dragOy = model?.y ?? 0; return; }
+  // Left click: poke/tap interaction
+  if (e.button === 0 && model && app) {
+    const rect = (app.view as HTMLCanvasElement).getBoundingClientRect();
+    const sx = (e.clientX - rect.left) * (app.renderer.width / rect.width);
+    const sy = (e.clientY - rect.top) * (app.renderer.height / rect.height);
+    const hitArea = (model as any).hitTest?.(sx - model.x, sy - model.y);
+    if (hitArea && TAP_MOTIONS[hitArea]) {
+      const tm = TAP_MOTIONS[hitArea];
+      try { (model as any).motion?.(tm.group, tm.index); } catch {}
+      // Brief scale bounce for feedback
+      const orig = currentScale;
+      cancelAnimationFrame(pokeAnim);
+      const bounce = () => {
+        const t = performance.now() % 300 / 300;
+        const s = orig + Math.sin(t * Math.PI) * 0.03;
+        model!.scale.set(s);
+        if (t < 0.99) pokeAnim = requestAnimationFrame(bounce);
+        else model!.scale.set(orig);
+      };
+      pokeAnim = requestAnimationFrame(bounce);
+    }
+  }
 });
 document.addEventListener('mousemove', (e) => {
   if (dragModel && model) { model.x = dragOx + (e.clientX - dragMx); model.y = dragOy + (e.clientY - dragMy); }
