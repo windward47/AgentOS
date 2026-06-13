@@ -272,7 +272,6 @@ function chunkForTTS(text: string): string[] {
 }
 
 async function playTTS(text: string, msgIdx: number) {
-  console.log('[TTS] playTTS called, len:', text.length, 'msgIdx:', msgIdx, 'ttsAuto:', ttsAuto.value)
   if (playingId.value === msgIdx) { stopTTS(); return }
   stopTTS()
   playingId.value = msgIdx
@@ -383,6 +382,8 @@ let interruptChunks: Blob[] = []
 async function maybeInterrupt() {
   if (!interruptEnabled.value || !bgAnalyser || !ttsSource || playingId.value === null) return
   if (interruptRecording) return
+  // When PTT is active, just stop TTS — don't start a second recorder
+  if (recording.value) { stopTTS(); return; }
 
   const data = new Uint8Array(bgAnalyser.frequencyBinCount)
   bgAnalyser.getByteTimeDomainData(data)
@@ -450,7 +451,6 @@ const interruptTimer = setInterval(maybeInterrupt, 100)
 // Auto-TTS: play new assistant messages automatically
 watch(() => messages.length, async (len) => {
   await nextTick(); if (list.value) list.value.scrollTop = list.value.scrollHeight
-  console.log('[TTS] watch messages.length:', len, 'ttsAuto:', ttsAuto.value, 'last role:', messages[len-1]?.role)
   if (ttsAuto.value && len > 0) {
     const last = messages[len - 1]
     if (last.role === 'assistant' && Date.now() - ttsLastAutoMs > 2000) {
