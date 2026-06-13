@@ -19,6 +19,5 @@ pub enum TtsError {
     TextTooLong(usize),
 }
 
-pub mod mock;
 pub mod playback;
 pub mod xiaomi_tts;

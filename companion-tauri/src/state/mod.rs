@@ -120,48 +120,43 @@ impl ToolState {
 // Tauri IPC Commands
 // ═══════════════════════════════════════════════════════════════════════
 
+/// Shared core: spawn sidecar, chat, update history.
+async fn do_chat(
+    agent: &AgentState,
+    config: &ConfigState,
+    tools: Option<&ToolState>,
+    message: String,
+) -> Result<String, String> {
+    if !agent.agent.is_running().await {
+        agent.agent.spawn().await
+            .map_err(|e| format!("Sidecar spawn failed: {e}"))?;
+    }
+    if let Some(t) = tools {
+        let cfg = config.config.lock().await;
+        let root = cfg.sandbox_path.to_string_lossy().to_string();
+        agent.agent.register_tools(t.tools.definitions(), &root).await
+            .map_err(|e| format!("Register tools: {e}"))?;
+    }
+    let history_snapshot = { agent.history.lock().await.clone() };
+    let system_prompt = config.config.lock().await.custom_system_prompt.clone();
+    let response = agent.agent.chat(&message, &history_snapshot, Some(&system_prompt)).await
+        .map_err(|e| format!("Agent error: {e}"))?;
+    {
+        let mut hist = agent.history.lock().await;
+        hist.push(ConversationMessage { role: MessageRole::User, content: message });
+        hist.push(ConversationMessage { role: MessageRole::Assistant, content: response.text.clone() });
+        if hist.len() > 50 { let keep = hist.len() - 50; hist.rotate_left(keep); hist.truncate(50); }
+    }
+    Ok(response.text)
+}
 
 #[tauri::command]
 pub async fn chat(
     agent: tauri::State<'_, AgentState>,
     config: tauri::State<'_, ConfigState>,
-    _voice: tauri::State<'_, VoiceState>,
     message: String,
 ) -> Result<String, String> {
-    // Auto-spawn sidecar if not running
-    if !agent.agent.is_running().await {
-        agent
-            .agent
-            .spawn()
-            .await
-            .map_err(|e| format!("Sidecar spawn failed: {e}"))?;
-    }
-    let history_snapshot = {
-        let hist = agent.history.lock().await;
-        hist.clone()
-    };
-    let response = agent
-        .agent
-        .chat(&message, &history_snapshot, Some(&config.config.lock().await.custom_system_prompt))
-        .await
-        .map_err(|e| format!("Agent error: {e}"))?;
-    {
-        let mut hist = agent.history.lock().await;
-        hist.push(ConversationMessage {
-            role: MessageRole::User,
-            content: message,
-        });
-        hist.push(ConversationMessage {
-            role: MessageRole::Assistant,
-            content: response.text.clone(),
-        });
-        if hist.len() > 50 {
-            let keep = hist.len() - 50;
-            hist.rotate_left(keep);
-            hist.truncate(50);
-        }
-    }
-    Ok(response.text)
+    do_chat(&agent, &config, None, message).await
 }
 
 #[tauri::command]
@@ -171,50 +166,7 @@ pub async fn chat_with_tools(
     tools: tauri::State<'_, ToolState>,
     message: String,
 ) -> Result<String, String> {
-    if !agent.agent.is_running().await {
-        agent
-            .agent
-            .spawn()
-            .await
-            .map_err(|e| format!("Sidecar spawn failed: {e}"))?;
-    }
-    // Register sandbox tools so the LLM can call sandbox_list/read/write/delete/execute
-    {
-        let cfg = config.config.lock().await;
-        let sandbox_root = cfg.sandbox_path.to_string_lossy().to_string();
-        let defs = tools.tools.definitions();
-        agent
-            .agent
-            .register_tools(defs, &sandbox_root)
-            .await
-            .map_err(|e| format!("Register tools: {e}"))?;
-    }
-    let history_snapshot = {
-        let hist = agent.history.lock().await;
-        hist.clone()
-    };
-    let response = agent
-        .agent
-        .chat(&message, &history_snapshot, Some(&config.config.lock().await.custom_system_prompt))
-        .await
-        .map_err(|e| format!("Agent error: {e}"))?;
-    {
-        let mut hist = agent.history.lock().await;
-        hist.push(ConversationMessage {
-            role: MessageRole::User,
-            content: message,
-        });
-        hist.push(ConversationMessage {
-            role: MessageRole::Assistant,
-            content: response.text.clone(),
-        });
-        if hist.len() > 50 {
-            let keep = hist.len() - 50;
-            hist.rotate_left(keep);
-            hist.truncate(50);
-        }
-    }
-    Ok(response.text)
+    do_chat(&agent, &config, Some(&tools), message).await
 }
 
 #[tauri::command]

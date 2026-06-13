@@ -1,11 +1,8 @@
 //! Audio capture and playback module.
 //!
-//! Provides microphone input via `cpal` and speaker output.
-//! The capture loop writes into a short (2s) ring buffer for VAD/ASR consumption.
+//! Provides audio utilities for format conversion (PCM / WAV).
 
-pub mod capture;
 pub mod utils;
-pub mod vad;
 
 use thiserror::Error;
 
