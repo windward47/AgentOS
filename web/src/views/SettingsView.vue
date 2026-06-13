@@ -87,6 +87,10 @@ const PRESET_URLS: Record<string, Record<string, string>> = {
   asr: { xiaomi: 'https://token-plan-cn.xiaomimimo.com/v1', local_funasr: 'http://localhost:8000/v1' },
   tts: { xiaomi: 'https://token-plan-cn.xiaomimimo.com/v1', local_cosyvoice: 'http://localhost:50002/v1' },
 }
+const TTS_VOICES: Record<string, string[]> = {
+  xiaomi: ['mimo_default', '茉莉', '冰糖', '苏打', '白桦', 'Mia', 'Chloe', 'Milo', 'Dean'],
+  local_cosyvoice: ['zh-CN-XiaoxiaoNeural', 'zh-CN-YunxiNeural', 'zh-CN-YunjianNeural', 'zh-CN-XiaoyiNeural'],
+}
 const PRESET_PROVIDERS: Record<string, string[]> = {
   llm: ['ollama', 'openai', 'local'],
   asr: ['whisper', 'azure', 'local'],
@@ -231,15 +235,7 @@ function onProviderChange(kind: 'llm' | 'asr' | 'tts') {
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1.5">TTS Voice</label>
             <select v-model="config.tts_voice" class="block w-full rounded-lg border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none">
-              <option value="mimo_default">mimo_default</option>
-              <option value="茉莉">茉莉</option>
-              <option value="冰糖">冰糖</option>
-              <option value="苏打">苏打</option>
-              <option value="白桦">白桦</option>
-              <option value="Mia">Mia</option>
-              <option value="Chloe">Chloe</option>
-              <option value="Milo">Milo</option>
-              <option value="Dean">Dean</option>
+              <option v-for="v in (TTS_VOICES[config.tts_provider] || TTS_VOICES['xiaomi'])" :key="v" :value="v">{{ v }}</option>
             </select>
           </div>
           <div>
