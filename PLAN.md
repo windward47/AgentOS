@@ -909,6 +909,47 @@ companion-tauri/ (Tauri 桌面壳 — 纯转发)
 
 ---
 
+## 阶段 S3：Open-LLM-VTuber 第二轮借鉴（进行中 📋）
+
+> 目标：借鉴 Open-LLM-VTuber 的音频、流式、配置和架构模式。
+
+### S3.1 — VU 表驱动嘴型 📋
+
+- 用 TTS PCM 数据计算 20ms 窗口真实 RMS 音量
+- 替代当前 `rms * 3` 粗糙估算
+- 发送 `volumes: float[]` 给前端逐帧驱动 `ParamMouthOpenY`
+
+### S3.2 — TTS 文本预处理器 📋
+
+- 移植 Open-LLM-VTuber 的 `tts_preprocessor.py`
+- 嵌套深度计数的括号/星号/方括号过滤
+- 替换当前 `stripForTTS` 的简单正则
+
+### S3.3 — 流式逐句显示 📋
+
+- 接入已实现的 `chat_stream` RPC
+- 侧车 `sentence_divider` 按句号拆句
+- 前端逐句渲染，不等全文
+
+### S3.4 — 角色配置热切换 📋
+
+- YAML/JSON 预设文件定义角色（prompt + 模型 + TTS 声音 + Live2D）
+- 前端下拉切换 → Rust `update_config` → Sidecar 热加载
+- 不重启
+
+### S3.5 — MCP 工具服务器 📋
+
+- `mcp_servers.json` 配置外部工具
+- Sidecar 启动子进程 → 注册 MCP 工具 → LLM 可调用
+
+### S3.6 — 装饰器 Pipeline 📋
+
+- `sentence_divider → actions_extractor → display_processor → tts_filter`
+- 可组合异步生成器管道
+- 新功能不用改核心逻辑
+
+---
+
 ## 4. 阶段三：社区与扩展
 
 > 目标：情绪驱动交互、对话风格系统、MCP 插件加载器、社区商店雏形。  
