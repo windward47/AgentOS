@@ -546,9 +546,18 @@ export class AgentManager {
                 } else if (event.type === "agent_end") {
                     unsubscribe();
                     const rawText = fullText || "(no response)";
-                    // Debug: check if LLM is producing think tags
-                    const hasThink = /<think>/i.test(rawText);
-                    process.stderr.write(`[sidecar] chat raw ${rawText.length}c hasThink=${hasThink} preview=${rawText.slice(0, 150)}\n`);
+                    // Debug: write to file to avoid terminal noise
+                    try {
+                        const { writeFileSync, existsSync, mkdirSync } = require("node:fs");
+                        const { join } = require("node:path");
+                        const { homedir } = require("node:os");
+                        const logDir = join(homedir(), ".companion", "logs");
+                        if (!existsSync(logDir)) mkdirSync(logDir, { recursive: true });
+                        const hasThink = /<think>/i.test(rawText);
+                        writeFileSync(join(logDir, "sidecar_debug.log"),
+                            `${new Date().toISOString()} hasThink=${hasThink} len=${rawText.length} preview=${rawText.slice(0, 200)}\n`,
+                            "utf-8");
+                    } catch {}
                     // Parse emotion + think tags
                     const { displayText, ttsText } = parseThinkTags(rawText);
                     const { cleanText, emotions } = parseEmotions(displayText);
