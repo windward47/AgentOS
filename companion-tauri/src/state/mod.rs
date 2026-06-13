@@ -320,7 +320,7 @@ pub async fn get_voice_state(voice: tauri::State<'_, VoiceState>) -> Result<Stri
     } else {
         "idle"
     };
-    log::debug!("get_voice_state → {}", s);
+    log::trace!("get_voice_state → {}", s);
     Ok(s.into())
 }
 
