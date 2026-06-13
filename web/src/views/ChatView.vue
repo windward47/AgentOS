@@ -209,6 +209,12 @@ async function startBackgroundVAD() {
 }
 
 onMounted(() => {
+  // Reset if user previously set a global hotkey as frontend hotkey
+  if (savedHotkey === 'Alt+`' || savedHotkey === 'Alt+T') {
+    savedHotkey = 'Ctrl+Shift+V'
+    hotkey.value = savedHotkey
+    shortcutDisplay.value = savedHotkey
+  }
   startBackgroundVAD()
   // Load voice preferences from config
   getConfig().then(c => {
@@ -247,6 +253,8 @@ function parseHotkey(e: KeyboardEvent): string | null {
 
 function onKeyDown(e: KeyboardEvent) {
   const parsed = parseHotkey(e)
+  // Never intercept global hotkeys (Alt+` / Alt+T)
+  if (parsed === 'Alt+`' || parsed === 'Alt+T') return
   if (parsed === savedHotkey) {
     e.preventDefault()
     toggleRecord()
