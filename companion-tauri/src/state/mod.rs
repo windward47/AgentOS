@@ -5,8 +5,6 @@
 
 use companion_core::agent::omp_sidecar::OmpAgentSidecar;
 use companion_core::agent::{AgentEngine, ConversationMessage, MessageRole, provider_to_model};
-use companion_core::asr::AsrProvider;
-use companion_core::tts::TtsProvider;
 use companion_core::config::{CompanionConfig, ConfigManager, resolve_provider_key, ensure_chat_completions_url};
 use companion_core::downloader::{download_model, DownloadProgress};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -179,39 +177,39 @@ pub async fn clear_history(agent: tauri::State<'_, AgentState>) -> Result<(), St
 #[tauri::command]
 pub async fn transcribe_audio(
     config: tauri::State<'_, ConfigState>,
+    agent: tauri::State<'_, AgentState>,
     audio: Vec<f32>,
 ) -> Result<String, String> {
+    if !agent.agent.is_running().await {
+        return Err("Sidecar not running".into());
+    }
     let cfg = config.config.lock().await;
-    let base_url = ensure_chat_completions_url(
-        &cfg.asr.url.clone().unwrap_or_else(||
-            "https://token-plan-cn.xiaomimimo.com/v1".into()
-        )
-    );
     let api_key = resolve_provider_key(&cfg.asr, &cfg.default_api_key);
-    let asr = companion_core::asr::xiaomi_asr::XiaomiAsr::with_url(&api_key, &base_url);
-    asr.transcribe(&audio)
-        .await
-        .map_err(|e| format!("ASR error: {e}"))
+    let base_url = ensure_chat_completions_url(
+        &cfg.asr.url.clone().unwrap_or_else(|| "https://token-plan-cn.xiaomimimo.com/v1".into())
+    );
+    agent.agent.transcribe_audio(&audio, &api_key, &base_url).await
+        .map_err(|e| format!("ASR: {e}"))
 }
 
 #[tauri::command]
 pub async fn synthesize_audio(
     config: tauri::State<'_, ConfigState>,
+    agent: tauri::State<'_, AgentState>,
     text: String,
     voice: Option<String>,
 ) -> Result<Vec<f32>, String> {
+    if !agent.agent.is_running().await {
+        return Err("Sidecar not running".into());
+    }
     let cfg = config.config.lock().await;
     let v = voice.unwrap_or_else(|| cfg.tts_voice.clone());
-    let baser_url = ensure_chat_completions_url(
-        &cfg.tts.url.clone().unwrap_or_else(||
-            "https://token-plan-cn.xiaomimimo.com/v1".into()
-        )
-    );
     let api_key = resolve_provider_key(&cfg.tts, &cfg.default_api_key);
-    let tts = companion_core::tts::xiaomi_tts::XiaomiTts::with_url(&api_key, &v, &baser_url);
-    tts.synthesize(&text)
-        .await
-        .map_err(|e| format!("TTS error: {e}"))
+    let base_url = ensure_chat_completions_url(
+        &cfg.tts.url.clone().unwrap_or_else(|| "https://token-plan-cn.xiaomimimo.com/v1".into())
+    );
+    agent.agent.synthesize_audio(&text, &v, &api_key, &base_url).await
+        .map_err(|e| format!("TTS: {e}"))
 }
 
 #[tauri::command]

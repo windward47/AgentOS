@@ -310,6 +310,33 @@ impl OmpAgentSidecar {
         let params = serde_json::json!({ "type": action_type, "payload": payload });
         self.send_request("agent_action", Some(params)).await
     }
+
+    /// Transcribe audio via sidecar (B1d: ASR moved to sidecar).
+    pub async fn transcribe_audio(&self, audio: &[f32], api_key: &str, base_url: &str) -> Result<String, AgentError> {
+        let params = serde_json::json!({
+            "audio": audio,
+            "api_key": api_key,
+            "base_url": base_url,
+        });
+        let result = self.send_request("transcribe_audio", Some(params)).await?;
+        Ok(result.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string())
+    }
+
+    /// Synthesize speech via sidecar (B1d: TTS moved to sidecar).
+    pub async fn synthesize_audio(&self, text: &str, voice: &str, api_key: &str, base_url: &str) -> Result<Vec<f32>, AgentError> {
+        let params = serde_json::json!({
+            "text": text,
+            "voice": voice,
+            "api_key": api_key,
+            "base_url": base_url,
+        });
+        let result = self.send_request("synthesize_audio", Some(params)).await?;
+        let pcm: Vec<f32> = result.get("pcm")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect())
+            .unwrap_or_default();
+        Ok(pcm)
+    }
 }
 
 #[async_trait]

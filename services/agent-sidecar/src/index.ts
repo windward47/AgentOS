@@ -8,6 +8,7 @@ import { createInterface } from "node:readline";
 import { AgentManager } from "./agent";
 import { encodeResult, encodeEvent, encodeError, parseRequest } from "./protocol";
 import type { ChatParams, SetModelParams } from "./protocol";
+import { transcribeAudio, synthesizeAudio } from "./audio";
 
 let agentManager: AgentManager;
 let pendingCount = 0;
@@ -56,6 +57,38 @@ async function handleRequest(req: { id: string; method: string; params?: Record<
 
             case "get_history": {
                 send(id, "result", { history: agentManager.getHistory() });
+                break;
+            }
+
+            case "transcribe_audio": {
+                const p = (params ?? {}) as { audio?: number[]; api_key?: string; base_url?: string };
+                if (!p.audio || p.audio.length === 0) {
+                    send(id, "error", { message: "missing audio data" });
+                    break;
+                }
+                try {
+                    const apiKey = p.api_key || agentManager.getApiKeyValue();
+                    const text = await transcribeAudio(p.audio, apiKey, p.base_url);
+                    send(id, "result", { text });
+                } catch (err: any) {
+                    send(id, "error", { message: `ASR: ${err.message}` });
+                }
+                break;
+            }
+
+            case "synthesize_audio": {
+                const p = (params ?? {}) as { text?: string; voice?: string; api_key?: string; base_url?: string };
+                if (!p.text) {
+                    send(id, "error", { message: "missing text" });
+                    break;
+                }
+                try {
+                    const apiKey = p.api_key || agentManager.getApiKeyValue();
+                    const pcm = await synthesizeAudio(p.text, p.voice || "茉莉", apiKey, p.base_url);
+                    send(id, "result", { pcm });
+                } catch (err: any) {
+                    send(id, "error", { message: `TTS: ${err.message}` });
+                }
                 break;
             }
 
@@ -128,8 +161,28 @@ async function handleRequest(req: { id: string; method: string; params?: Record<
                         break;
                     }
                     // ASR/TTS/browse: handled by Rust for now (respond with forwarded marker)
-                    case "transcribe_audio":
-                    case "synthesize_audio":
+                    case "transcribe_audio": {
+                        if (!p.payload?.audio) { send(id, "error", { message: "missing audio" }); break; }
+                        try {
+                            const apiKey = (p.payload.api_key as string) || agentManager.getApiKeyValue();
+                            const text = await transcribeAudio(p.payload.audio as number[], apiKey, p.payload.base_url as string);
+                            send(id, "result", { text });
+                        } catch (err: any) {
+                            send(id, "error", { message: `ASR: ${err.message}` });
+                        }
+                        break;
+                    }
+                    case "synthesize_audio": {
+                        if (!p.payload?.text) { send(id, "error", { message: "missing text" }); break; }
+                        try {
+                            const apiKey = (p.payload.api_key as string) || agentManager.getApiKeyValue();
+                            const pcm = await synthesizeAudio(p.payload.text as string, (p.payload.voice as string) || "茉莉", apiKey, p.payload.base_url as string);
+                            send(id, "result", { pcm });
+                        } catch (err: any) {
+                            send(id, "error", { message: `TTS: ${err.message}` });
+                        }
+                        break;
+                    }
                     case "browse_screenshot": {
                         send(id, "result", { forwarded: true, type: p.type, payload: p.payload });
                         break;
