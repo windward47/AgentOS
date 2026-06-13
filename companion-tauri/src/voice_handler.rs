@@ -133,7 +133,11 @@ pub async fn handle_voice_command(
             let speed = cfg_guard.tts_speed;
             drop(cfg_guard);
 
-            let tts = XiaomiTts::new(&api_token, &voice);
+            // Alt+T always uses Xiaomi cloud (global hotkey path)
+            // If config voice is an Edge voice, fall back to 茉莉
+            let xiaomi_voice = if voice.starts_with("zh-CN-") { "茉莉" } else { &voice };
+
+            let tts = XiaomiTts::new(&api_token, xiaomi_voice);
             match tts.synthesize(&text).await {
                 Ok(pcm_f32) => {
                     log::info!("[GlobalVoice] TTS synthesized {} f32 samples", pcm_f32.len());
