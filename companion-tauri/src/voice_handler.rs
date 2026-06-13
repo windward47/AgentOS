@@ -89,13 +89,21 @@ pub async fn handle_voice_command(
             }
             log::info!("[GlobalVoice] ASR result: {} chars", text.len());
 
-            // Emit to chat window so it appears in the input box
-            let _ = app.emit("voice_asr_result", serde_json::json!({ "text": &text }));
+            // Check if Companion window is focused
+            let companion_focused = app.get_webview_window("main")
+                .map(|w| w.is_focused().unwrap_or(false))
+                .unwrap_or(false);
 
-            let mode = *inject_mode.lock().unwrap();
-            log::info!("[GlobalVoice] Injecting via {:?}", mode);
-            if let Err(e) = inject_text(&text, mode) {
-                log::error!("[GlobalVoice] Injection failed: {}", e);
+            if companion_focused {
+                // Send to chat input via event — no keyboard injection needed
+                let _ = app.emit("voice_asr_result", serde_json::json!({ "text": &text }));
+            } else {
+                // Inject into whichever app has focus
+                let mode = *inject_mode.lock().unwrap();
+                log::info!("[GlobalVoice] Injecting via {:?}", mode);
+                if let Err(e) = inject_text(&text, mode) {
+                    log::error!("[GlobalVoice] Injection failed: {}", e);
+                }
             }
         }
 
