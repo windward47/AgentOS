@@ -433,7 +433,6 @@ export class AgentManager {
         const sp = this.companionConfig.custom_system_prompt
             || "Companion — a helpful desktop AI assistant.";
         const fullPrompt = [
-            `CRITICAL: EVERY response MUST start with <think>your inner reasoning</think>. Example: "<think>The user wants weather. I'll web_search.</think> [happy] The weather today is...". The think part appears in italics, not spoken.`,
             sp,
             emotionPromptFragment(),
             SPEAKABLE_PROMPT,

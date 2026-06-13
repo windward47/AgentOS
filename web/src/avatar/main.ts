@@ -89,8 +89,9 @@ document.addEventListener('mousedown', (e) => {
   // Left click: poke reaction — any hit on the model triggers a random expression
   if (e.button === 0 && model && app) {
     const rect = (app.view as HTMLCanvasElement).getBoundingClientRect();
-    const sx = (e.clientX - rect.left) * (app.renderer.width / rect.width);
-    const sy = (e.clientY - rect.top) * (app.renderer.height / rect.height);
+    // autoDensity maps CSS pixels 1:1 to stage coords — no ratio needed
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
     const raw = (model as any).hitTest?.(sx - model.x, sy - model.y);
     const hitName = Array.isArray(raw) ? raw[0] : raw;
     if (!hitName) return; // missed the model entirely

@@ -273,15 +273,15 @@ Open issues found during code review (2026-06-13):
 
 1. **Emotion prompt injected unconditionally** — ✅ FIXED: prompts moved to `createAgent()`, set once at Agent creation.
 
-2. **`setModel()` creates new Agent losing pi-agent-core state** (`agent.ts:467`) — `this.agent = this.createAgent()` resets the internal Agent's conversation context. `messageHistory` array survives but pi-agent-core's `prompt()` can't leverage prior turns. Should re-feed history into the new Agent, or avoid recreating.
+2. **`setModel()` creates new Agent losing pi-agent-core state** — ✅ ACCEPTED: model switching is extremely rare (user changes Settings). `messageHistory` survives in the array; only pi-agent-core internal context resets. Next prompt will re-establish context from scratch. Not worth the complexity of replaying history via `agent.prompt()`.
 
-3. **Poke hitTest coordinate drift at non-1x DPI** (`avatar/main.ts:~90`) — `(clientX - rect.left) * (renderer.width / rect.width)` assumes CSS pixels match canvas pixels. With `autoDensity: true` + `resolution: devicePixelRatio`, the conversion may shift. Should use PIXI's `app.renderer.plugins.interaction` or `event.data.getLocalPosition()`.
+3. **Poke hitTest coordinate** — ✅ FIXED: with `autoDensity: true`, CSS pixels map 1:1 to stage coords.
 
 4. **Voice duplicate messages** — ✅ FIXED (2026-06-13): replaced `recording/interruptRecording/voiceInFlight` with 5-state machine (`idle/listening/processing/speaking`). `tryTransition()` enforces atomic state changes.
 
 5. **TTS silent** — ✅ FIXED: Sidecar `synthesizeAudio` now uses `mimo-v2.5-tts` model with correct `modalities:["text","audio"]` + `audio:{voice,format:"wav"}` params.
 
-6. **Think tags not produced by LLM** — ⚠️ Workaround: prompt moved to position 1 with `CRITICAL` prefix, but Nex-N2-Pro model doesn't reliably follow formatting instructions. Consider model-side parsing or a different model.
+6. **Think tags** — ✅ WON'T FIX: Nex-N2-Pro doesn't support formatting. Prompt removed.
 
 7. **web_search blocked in China** — ✅ FIXED: DuckDuckGo fallback to Bing HTML scraping with User-Agent spoofing.
 
