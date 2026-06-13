@@ -30,6 +30,11 @@ src-tauri/gen/
 # OS
 .DS_Store
 Thumbs.db
+
+# Large binary files (Live2D — should never be committed)
+*.cmo3
+*.psd
+Thumbs.db
 desktop.ini
 
 # Environment
@@ -80,4 +85,5 @@ services/*
 # Playwright CLI output
 .playwright-cli/
 
-web/node_modulesweb/public/live2d/models/
+web/node_modules
+web/public/live2d/models/
