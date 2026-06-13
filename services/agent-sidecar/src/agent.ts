@@ -8,10 +8,11 @@ import { sandboxResolve, hasDangerousChars, isHighRisk, logAudit } from "./sandb
 
 // ── DuckDuckGo web search (zero-config, always available) ─────────────
 
-async function duckDuckGoSearch(query: string) {
+async function webSearch(query: string) {
+    // Try DuckDuckGo first (may be blocked in some regions)
     try {
         const q = encodeURIComponent(query);
-        const resp = await fetch(`https://api.duckduckgo.com/?q=${q}&format=json`);
+        const resp = await fetch(`https://api.duckduckgo.com/?q=${q}&format=json`, { signal: AbortSignal.timeout(5000) });
         const data: any = await resp.json();
         let text = "";
         if (data.AbstractText) text += `Summary: ${data.AbstractText}\n`;
@@ -22,11 +23,32 @@ async function duckDuckGoSearch(query: string) {
                 if (t.Text) text += `- ${t.Text}\n`;
             }
         }
-        if (!text) text = `No results found for "${query}".`;
-        return { content: [{ type: "text" as const, text: text.trim() }] };
-    } catch (err: any) {
-        return { content: [{ type: "text" as const, text: `Search failed: ${err.message}` }] };
-    }
+        if (text) return { content: [{ type: "text" as const, text: text.trim() }] };
+    } catch { /* fall through to Bing */ }
+
+    // Fallback: Bing search (accessible from China)
+    try {
+        const q = encodeURIComponent(query);
+        const resp = await fetch(`https://www.bing.com/search?q=${q}&setlang=en`, {
+            signal: AbortSignal.timeout(8000),
+            headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+        });
+        const html = await resp.text();
+        // Extract snippets from Bing results
+        const snippets: string[] = [];
+        const re = /<li class="b_algo">[\s\S]*?<h2><a[^>]*>([\s\S]*?)<\/a>[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>/gi;
+        let match;
+        while ((match = re.exec(html)) !== null && snippets.length < 5) {
+            const title = match[1].replace(/<[^>]+>/g, "").trim();
+            const desc = match[2].replace(/<[^>]+>/g, "").trim();
+            snippets.push(`${title}: ${desc}`);
+        }
+        if (snippets.length > 0) {
+            return { content: [{ type: "text" as const, text: `Bing results for "${query}":\n${snippets.join("\n")}` }] };
+        }
+    } catch { /* both failed */ }
+
+    return { content: [{ type: "text" as const, text: `Search unavailable for "${query}". Try a different query or check internet.` }] };
 }
 
 // ── File & system tools (Bun native) ───────────────────────────────────
@@ -218,7 +240,7 @@ export function emotionPromptFragment(): string {
 export const SPEAKABLE_PROMPT = `Make your responses speakable by TTS. Convert math formulas, numbers, and symbols to their spoken form (e.g., "5x^2 + 3x - 2" → "five X squared plus three X minus two", "$50.25" → "fifty dollars and twenty-five cents", "H₂O" → "H two O"). Avoid markdown formatting symbols in spoken content.`;
 
 /** Prompt to make tool calling decisive — use tools without asking. */
-export const TOOL_GUIDANCE_PROMPT = `If a tool is needed, proactively use it without asking the user directly. You can use at most one sentence to explain before using a tool.`;
+export const TOOL_GUIDANCE_PROMPT = `If a tool is needed, proactively use it without asking the user directly. You can use at most one sentence to explain before using a tool. Do NOT use bash or ping to test network connectivity — web_search handles this internally.`;
 
 function makeSandboxTools(sandboxRoot: string): AgentTool[] {
     const safe = (rel: string) => sandboxResolve(rel || ".", sandboxRoot);
@@ -341,7 +363,7 @@ const WEB_SEARCH_TOOL: AgentTool = {
         required: ["query"],
     },
     execute: async (_toolCallId: string, params: any) => {
-        return await duckDuckGoSearch(params.query);
+        return await webSearch(params.query);
     },
 };
 
