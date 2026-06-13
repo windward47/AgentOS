@@ -350,7 +350,9 @@ pub async fn list_live2d_models() -> Result<Vec<String>, String> {
     // Filter: exclude known-incompatible models (.cmo3 format, moc3 v6)
     models.retain(|p| {
         let lower = p.to_lowercase();
-        !lower.contains("epsilon") && !lower.contains("/ren/") && !lower.contains("miku_pro")
+        !lower.contains("epsilon")
+        && !(lower.starts_with("ren_") || lower.contains("/ren."))
+        && !lower.contains("miku_pro")
     });
     models.dedup();
     // Also deduplicate by stripping intermediate "kei_zh/" prefix (home vs web dirs differ)
