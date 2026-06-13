@@ -13,6 +13,7 @@ use companion_core::tts::{TtsProvider, xiaomi_tts::XiaomiTts};
 use companion_core::tts::playback;
 use companion_core::config::{CompanionConfig, resolve_provider_key};
 use tauri::Manager;
+use tauri::Emitter;
 use enigo::Keyboard;
 
 use crate::state::{VoiceState, ConfigState};
