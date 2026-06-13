@@ -263,7 +263,11 @@ Live2D 不应该和聊天 UI 挤在同一个 Vue 组件里。正确做法：
 | R1 | ✅ | Cargo workspace + domain states + dead code cleanup |
 | R2 | ✅ | A/A+ dead code purge (~850 lines) + architecture audit |
 | S2 | ✅ | Agent tools (web_search/web_fetch/read/write/search/find/bash) + Live2D model switching + model store |
-| **B1** | **✅** | **Architecture: Sidecar becomes Agent Core (config/history/tools/ASR/TTS/event bus). Rust 16→9 modules, ~2000→~600 lines** |
+| **B1** | **✅** | **Architecture: Sidecar becomes Agent Core (config/history/tools/ASR/TTS/event bus). Rust 16→9 modules** |
+| R3 | ✅ | Voice state machine (5-state: idle/listening/processing/speaking) |
+| R4 | ✅ | Automated tests — Bun 16 + Rust 5 (sidecar) + Playwright 6 |
+| S3 | ✅ | Open-LLM-VTuber round 2: VU meter lip-sync, TTS preprocessor, streaming display, character presets |
+| S4 | ✅ | Local ASR (FunASR SenseVoice) + local TTS (Microsoft Edge via HTTP), provider-switchable in Settings |
 | 3.x | 📋 | Emotion recognition + style system + MCP plugins + community store |
 | 4.x | 📋 | VR mode + cross-platform packaging + performance |
 
