@@ -413,7 +413,7 @@ export class AgentManager {
         const fullPrompt = [
             sp,
             emotionPromptFragment(),
-            `You can also wrap inner thoughts in <think>...</think> tags — they'll be shown but not spoken.`,
+            `Wrap your inner thoughts and reasoning in <think>...</think> tags in EVERY response. These will be shown as italic text but NOT spoken. Example: "<think>Let me search for the weather data first...</think> Here's the weather:"`,
             SPEAKABLE_PROMPT,
             TOOL_GUIDANCE_PROMPT,
         ].join("\n\n");
