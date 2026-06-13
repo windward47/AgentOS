@@ -219,7 +219,8 @@ pub async fn synthesize_audio(
         &cfg.tts.url.clone().unwrap_or_else(|| "https://token-plan-cn.xiaomimimo.com/v1".into())
     );
     agent.agent.synthesize_audio(&text, &v, &api_key, &base_url).await
-        .map_err(|e| format!("TTS: {e}"))
+        .map_err(|e| { log::error!("[synthesize_audio] sidecar error: {e}"); format!("TTS: {e}") })
+        .map(|pcm| { log::info!("[synthesize_audio] got {} samples", pcm.len()); pcm })
 }
 
 #[tauri::command]
