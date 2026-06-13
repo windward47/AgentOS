@@ -506,15 +506,6 @@ export class AgentManager {
         this.agent.setTools(tools);
     }
 
-    /**
-     * Register tools from JSON definitions (from Rust).
-     * Each tool def has name, description, parameters (JSON Schema).
-     */
-        // Currently, pi-agent-core's Agent class doesn't auto-load omp tools.
-        // Tools need to be explicitly set. For now, we use only explicitly registered tools.
-        // This will be expanded in a future update.
-    }
-
     abort(): void {
         this.currentAbortController?.abort();
         this.currentAbortController = null;
