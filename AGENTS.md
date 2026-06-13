@@ -271,11 +271,19 @@ Live2D 不应该和聊天 UI 挤在同一个 Vue 组件里。正确做法：
 
 Open issues found during code review (2026-06-13):
 
-1. **Emotion prompt injected unconditionally** (`agent.ts:480-486`) — `chat()` appends ~200 chars of emotion tag + think tag guidance to user's custom system prompt on every call. Should be configurable (toggle in CompanionConfig) or only injected once on `createAgent()`.
+1. **Emotion prompt injected unconditionally** — ✅ FIXED: prompts moved to `createAgent()`, set once at Agent creation.
 
 2. **`setModel()` creates new Agent losing pi-agent-core state** (`agent.ts:467`) — `this.agent = this.createAgent()` resets the internal Agent's conversation context. `messageHistory` array survives but pi-agent-core's `prompt()` can't leverage prior turns. Should re-feed history into the new Agent, or avoid recreating.
 
 3. **Poke hitTest coordinate drift at non-1x DPI** (`avatar/main.ts:~90`) — `(clientX - rect.left) * (renderer.width / rect.width)` assumes CSS pixels match canvas pixels. With `autoDensity: true` + `resolution: devicePixelRatio`, the conversion may shift. Should use PIXI's `app.renderer.plugins.interaction` or `event.data.getLocalPosition()`.
+
+4. **Voice duplicate messages** — ✅ FIXED (2026-06-13): replaced `recording/interruptRecording/voiceInFlight` with 5-state machine (`idle/listening/processing/speaking`). `tryTransition()` enforces atomic state changes.
+
+5. **TTS silent** — ✅ FIXED: Sidecar `synthesizeAudio` now uses `mimo-v2.5-tts` model with correct `modalities:["text","audio"]` + `audio:{voice,format:"wav"}` params.
+
+6. **Think tags not produced by LLM** — ⚠️ Workaround: prompt moved to position 1 with `CRITICAL` prefix, but Nex-N2-Pro model doesn't reliably follow formatting instructions. Consider model-side parsing or a different model.
+
+7. **web_search blocked in China** — ✅ FIXED: DuckDuckGo fallback to Bing HTML scraping with User-Agent spoofing.
 
 ## Notes
 
