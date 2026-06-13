@@ -125,14 +125,14 @@ async function startRecording() {
       analyserNode = null
       vadLevel.value = 0
       if (voiceInFlight) return  // interrupt already handled this
-      if (audioChunks.length === 0) return
-      voiceInFlight = true
+      if (audioChunks.length === 0) { voiceInFlight = false; return }
+      voiceInFlight = true  // already set by stopRecording, but re-affirm
       const blob = new Blob(audioChunks, { type: 'audio/webm' })
       const pcm = await blobToPCM(blob)
-      if (pcm.length === 0) return
+      if (pcm.length === 0) { voiceInFlight = false; return }
       try {
         const text = await transcribeAudio(Array.from(pcm))
-        if (!text) return
+        if (!text) { voiceInFlight = false; return }
         store.setSending(true)
         store.addMessage({ role: 'user', content: text })
         try {
@@ -149,8 +149,10 @@ async function startRecording() {
 
 function stopRecording() {
   if (autoVadRaf) { cancelAnimationFrame(autoVadRaf); autoVadRaf = 0 }
-  if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop()
-  recording.value = false
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    voiceInFlight = true  // lock before async stop() — prevents interrupt race
+    mediaRecorder.stop()
+  }
   analyserNode = null
   vadLevel.value = 0
 }
@@ -420,7 +422,7 @@ async function maybeInterrupt() {
           voiceInFlight = true
           try {
             const text = await transcribeAudio(Array.from(pcm))
-            if (!text) return
+            if (!text) { voiceInFlight = false; return }
             store.setSending(true)
             store.addMessage({ role: 'user', content: text })
             try {
