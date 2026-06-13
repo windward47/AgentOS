@@ -933,16 +933,13 @@ companion-tauri/ (Tauri 桌面壳 — 纯转发)
 - 前端下拉切换 → Rust `update_config` → Sidecar 热加载
 - 不重启
 
-### S3.5 — MCP 工具服务器 📋
+### S3.5 — MCP 工具服务器 ✅ (使用 omp 内置)
 
-- `mcp_servers.json` 配置外部工具
-- Sidecar 启动子进程 → 注册 MCP 工具 → LLM 可调用
+- oh-my-pi / pi-agent-core 原生支持 MCP 协议
+- 通过 `~/.omp/agent/config.yml` 配置 MCP 服务器
+- 无需自己实现 MCP 客户端——omp 已处理连接、工具发现、调用
 
-### S3.6 — 装饰器 Pipeline 📋
-
-- `sentence_divider → actions_extractor → display_processor → tts_filter`
-- 可组合异步生成器管道
-- 新功能不用改核心逻辑
+### S3.6 — 装饰器 Pipeline 📋 (deferred — overengineering for 5-step chat)
 
 ---
 
