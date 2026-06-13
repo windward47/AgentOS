@@ -83,7 +83,6 @@ document.addEventListener('dblclick', () => {
 });
 
 async function loadModel(path: string) {
-  // Remove old model first — prevents render loop from processing stale data
   if (model) { app.stage.removeChild(model as any); model = null; }
   const url = '/live2d/models/' + path;
   console.log('[Haru] Loading model:', url);

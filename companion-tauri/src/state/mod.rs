@@ -325,7 +325,6 @@ pub async fn get_voice_state(voice: tauri::State<'_, VoiceState>) -> Result<Stri
 }
 
 /// List available Live2D models from web/public/live2d/models/.
-/// Returns relative paths to .model3.json files for verified-compatible models.
 #[tauri::command]
 pub async fn list_live2d_models() -> Result<Vec<String>, String> {
     // Verified-compatible models (tested with Cubism SDK 5.1.0).
