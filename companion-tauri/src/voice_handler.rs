@@ -161,11 +161,11 @@ pub async fn handle_voice_command(
             app.state::<VoiceState>().is_speaking.store(true, Ordering::Release);
 
             // Speed affects lip-sync timing only (not audio — no web audio API)
-            let sample_rate = (24000.0 * speed) as u32;
+            let sample_rate = (16000.0 * speed) as u32;
             animate_lip_sync(&pcm_f32, sample_rate, app);
 
             let i16 = f32_to_i16(&pcm_f32);
-            match pcm_i16_to_wav(&i16, 24000) {
+            match pcm_i16_to_wav(&i16, 16000) {
                 Ok(wav) => {
                     log::info!("[GlobalVoice] WAV encoded {} bytes, starting playback", wav.len());
                     playback::play_wav_async(wav);
