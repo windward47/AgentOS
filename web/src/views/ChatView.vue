@@ -124,7 +124,9 @@ async function startRecording() {
     mediaRecorder.onstop = async () => {
       analyserNode = null
       vadLevel.value = 0
+      if (voiceInFlight) return  // interrupt already handled this
       if (audioChunks.length === 0) return
+      voiceInFlight = true
       const blob = new Blob(audioChunks, { type: 'audio/webm' })
       const pcm = await blobToPCM(blob)
       if (pcm.length === 0) return
@@ -137,8 +139,8 @@ async function startRecording() {
           const reply = await chat(text)
           store.addMessage({ role: 'assistant', content: reply })
         } catch (err: any) { store.addMessage({ role: 'assistant', content: String(err) }) }
-        finally { store.setSending(false) }
-      } catch (err: any) { showToast('ASR: ' + String(err)); console.error('ASR error:', err) }
+        finally { store.setSending(false); voiceInFlight = false; }
+      } catch (err: any) { showToast('ASR: ' + String(err)); console.error('ASR error:', err); voiceInFlight = false; }
     }
     mediaRecorder.start()
     recording.value = true
@@ -374,6 +376,7 @@ async function send() {
 const interruptSpeechMs = ref(300)     // ms of sustained voice to trigger
 const interruptSilenceMs = ref(800)    // ms of silence after speech to stop recording
 let interruptRecording = false
+let voiceInFlight = false // shared lock — prevent PTT + interrupt overlap
 let interruptSpeechStart = 0
 let interruptSilenceStart = 0
 let interruptRecorder: MediaRecorder | null = null
@@ -381,7 +384,7 @@ let interruptChunks: Blob[] = []
 
 async function maybeInterrupt() {
   if (!interruptEnabled.value || !bgAnalyser || !ttsSource || playingId.value === null) return
-  if (interruptRecording) return
+  if (interruptRecording || voiceInFlight) return
   // When PTT is active, just stop TTS — don't start a second recorder
   if (recording.value) { stopTTS(); return; }
 
@@ -410,9 +413,11 @@ async function maybeInterrupt() {
         interruptRecorder.ondataavailable = (e) => { if (e.data.size > 0) interruptChunks.push(e.data) }
         interruptRecorder.onstop = async () => {
           if (interruptChunks.length === 0) return
+          if (voiceInFlight) return // PTT already handled this input
           const blob = new Blob(interruptChunks, { type: 'audio/webm' })
           const pcm = await blobToPCM(blob)
           if (pcm.length === 0) return
+          voiceInFlight = true
           try {
             const text = await transcribeAudio(Array.from(pcm))
             if (!text) return
@@ -424,7 +429,7 @@ async function maybeInterrupt() {
             } catch (err: any) { store.addMessage({ role: 'assistant', content: String(err) }) }
             finally { store.setSending(false) }
           } catch (err: any) { showToast('Interrupt ASR: ' + String(err)); console.error('ASR error:', err) }
-          interruptRecording = false; interruptSpeechStart = 0; interruptSilenceStart = 0
+          interruptRecording = false; interruptSpeechStart = 0; interruptSilenceStart = 0; voiceInFlight = false;
         }
         interruptRecorder.start()
         interruptRecording = true
