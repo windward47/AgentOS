@@ -124,9 +124,8 @@ async function startRecording() {
     mediaRecorder.onstop = async () => {
       analyserNode = null
       vadLevel.value = 0
-      if (voiceInFlight) return  // interrupt already handled this
       if (audioChunks.length === 0) { voiceInFlight = false; return }
-      voiceInFlight = true  // already set by stopRecording, but re-affirm
+      // voiceInFlight was set by stopRecording() — proceed to process
       const blob = new Blob(audioChunks, { type: 'audio/webm' })
       const pcm = await blobToPCM(blob)
       if (pcm.length === 0) { voiceInFlight = false; return }
