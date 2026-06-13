@@ -311,6 +311,71 @@ impl OmpAgentSidecar {
         self.send_request("agent_action", Some(params)).await
     }
 
+    /// Stream chat tokens from the persistent sidecar.
+    /// Returns a receiver that yields (token: String) events, terminated by an empty string.
+    pub async fn chat_stream_tokens(&self, message: &str) -> Result<tokio::sync::mpsc::Receiver<String>, AgentError> {
+        let params = serde_json::json!({ "message": message, "history": [] });
+        let (tx, rx) = tokio::sync::mpsc::channel(256);
+
+        let process = self.process.clone();
+        let request = JsonRpcRequest {
+            id: format!("s{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()),
+            method: "chat_stream".to_string(),
+            params: Some(params),
+        };
+
+        tokio::spawn(async move {
+            let mut guard = process.lock().await;
+            let proc = match guard.as_mut() {
+                Some(p) => p,
+                None => { let _ = tx.send(String::new()).await; return; }
+            };
+
+            let json = match serde_json::to_string(&request) {
+                Ok(j) => j,
+                Err(_) => { let _ = tx.send(String::new()).await; return; }
+            };
+
+            if writeln!(proc.stdin_writer, "{json}").is_err() || proc.stdin_writer.flush().is_err() {
+                let _ = tx.send(String::new()).await;
+                return;
+            }
+
+            let mut line = String::new();
+            loop {
+                line.clear();
+                if proc.stdout_reader.read_line(&mut line).is_err() || line.is_empty() {
+                    let _ = tx.send(String::new()).await;
+                    return;
+                }
+                let trimmed = line.trim();
+                if trimmed.is_empty() { continue; }
+
+                let resp: JsonRpcResponse = match serde_json::from_str(trimmed) {
+                    Ok(r) => r,
+                    Err(_) => continue,
+                };
+                if resp.id != request.id { continue; }
+
+                match resp.r#type.as_str() {
+                    "event" => match resp.event.as_deref() {
+                        Some("token") => {
+                            if let Some(t) = resp.data.as_ref().and_then(|d| d.get("token")).and_then(|v| v.as_str()) {
+                                if tx.send(t.to_string()).await.is_err() { return; }
+                            }
+                        }
+                        Some("done") => { let _ = tx.send(String::new()).await; return; }
+                        _ => {}
+                    },
+                    "error" => { let _ = tx.send(String::new()).await; return; }
+                    _ => {}
+                }
+            }
+        });
+
+        Ok(rx)
+    }
+
     /// Transcribe audio via sidecar (B1d: ASR moved to sidecar).
     pub async fn transcribe_audio(&self, audio: &[f32], api_key: &str, base_url: &str) -> Result<String, AgentError> {
         let params = serde_json::json!({

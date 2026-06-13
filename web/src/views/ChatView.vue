@@ -4,7 +4,7 @@ import { useCompanion } from '../composables/useCompanion'
 import { useAppStore } from '../stores/app'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 
-const { getConfig, updateConfig, chat, transcribeAudio, synthesizeAudio, setLipLevel, browseScreenshot } = useCompanion()
+const { getConfig, updateConfig, chat, chatStream, transcribeAudio, synthesizeAudio, setLipLevel, browseScreenshot } = useCompanion()
 
 /** Strip markdown + nested delimiters for TTS playback.
  *  Brackets [...], parentheses (...), and asterisks *...* are removed
@@ -399,17 +399,48 @@ function stopTTS() {
   if (voiceState.value === 'speaking') voiceState.value = 'idle'
 }
 
+// ── Streaming state ──
+const streamingIdx = ref(-1) // message index currently being streamed
+
+// Listen for streaming tokens
+import('@tauri-apps/api/event').then(m => {
+  m.listen<{ token?: string; done?: boolean }>('chat_token', (evt) => {
+    const p = evt.payload
+    if (p.done) {
+      streamingIdx.value = -1
+      return
+    }
+    if (p.token && streamingIdx.value >= 0) {
+      const msgs = store.messages
+      msgs[streamingIdx.value].content += p.token
+    }
+  })
+}).catch(() => {})
+
 // ── Chat ──
 async function send() {
   const text = input.value.trim()
   if (!text || store.sending) return
   input.value = ''; store.setSending(true)
   store.addMessage({ role: 'user', content: text })
+  
+  // Add empty assistant bubble for streaming
+  store.addMessage({ role: 'assistant', content: '' })
+  streamingIdx.value = store.messages.length - 1
+  
   try {
-    const reply = await chat(text)
-    store.addMessage({ role: 'assistant', content: reply })
-  } catch (err: any) { store.addMessage({ role: 'assistant', content: String(err) }) }
-  finally { store.setSending(false) }
+    await chatStream(text) // streaming — tokens arrive via chat_token events
+    store.setSending(false)
+    streamingIdx.value = -1
+  } catch (err: any) {
+    if (streamingIdx.value >= 0) {
+      store.messages[streamingIdx.value].content = String(err)
+    } else {
+      store.addMessage({ role: 'assistant', content: String(err) })
+    }
+    store.setSending(false)
+    streamingIdx.value = -1
+  }
 }
 
 // ── Interrupt: background VAD with dual threshold ──

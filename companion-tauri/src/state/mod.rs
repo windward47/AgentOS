@@ -150,6 +150,36 @@ pub async fn agent_action(
     Ok(result)
 }
 
+/// S3.3: Stream chat tokens to frontend via Tauri events.
+#[tauri::command]
+pub async fn chat_stream(
+    app: tauri::AppHandle,
+    agent: tauri::State<'_, AgentState>,
+    config: tauri::State<'_, ConfigState>,
+    message: String,
+) -> Result<(), String> {
+    if !agent.agent.is_running().await {
+        agent.agent.spawn().await
+            .map_err(|e| format!("spawn: {e}"))?;
+        config.sync_from_sidecar(&agent.agent).await?;
+    }
+    let mut rx = agent.agent.chat_stream_tokens(&message).await
+        .map_err(|e| format!("stream: {e}"))?;
+
+    let app2 = app.clone();
+    tokio::spawn(async move {
+        while let Some(token) = rx.recv().await {
+            if token.is_empty() {
+                let _ = app2.emit("chat_token", serde_json::json!({ "done": true }));
+                break;
+            }
+            let _ = app2.emit("chat_token", serde_json::json!({ "token": token }));
+        }
+    });
+
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn get_history(
     agent: tauri::State<'_, AgentState>,

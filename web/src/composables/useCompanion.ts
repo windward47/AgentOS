@@ -26,6 +26,11 @@ export function useCompanion() {
     return invoke<string>('chat', { message })
   }
 
+  /** S3.3: Stream chat — returns immediately, tokens arrive via 'chat_token' Tauri events. */
+  function chatStream(message: string): Promise<void> {
+    return invoke('chat_stream', { message })
+  }
+
   function transcribeAudio(audio: number[]): Promise<string> {
     return invoke<string>('transcribe_audio', { audio })
   }
@@ -88,6 +93,7 @@ export function useCompanion() {
     getConfig,
     updateConfig,
     chat,
+    chatStream,
     transcribeAudio,
     synthesizeAudio,
     setLipLevel,

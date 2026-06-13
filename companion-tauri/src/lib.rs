@@ -59,6 +59,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             state::chat,
+            state::chat_stream,
             state::agent_action,
             state::get_history,
             state::clear_history,
