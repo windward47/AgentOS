@@ -11,7 +11,7 @@ use companion_core::asr::{AsrProvider, xiaomi_asr::XiaomiAsr, whisper_cloud::Whi
 use companion_core::inject::{inject_text, text_reader, InjectMode};
 use companion_core::tts::{TtsProvider, xiaomi_tts::XiaomiTts};
 use companion_core::tts::playback;
-use companion_core::config::CompanionConfig;
+use companion_core::config::{CompanionConfig, resolve_provider_key};
 use tauri::Manager;
 use enigo::Keyboard;
 
@@ -122,7 +122,7 @@ pub async fn handle_voice_command(
 
             let state = app.state::<ConfigState>();
             let cfg_guard = state.config.lock().await;
-            let api_token = crate::state::resolve_provider_key(&cfg_guard.tts, &cfg_guard.default_api_key);
+            let api_token = resolve_provider_key(&cfg_guard.tts, &cfg_guard.default_api_key);
 
             if api_token.is_empty() {
                 log::error!("[GlobalVoice] COMPANION_API_TOKEN not set (neither in config nor env), cannot use TTS");
@@ -252,7 +252,7 @@ pub fn build_global_asr_engines(
     use std::collections::HashMap;
 
     let mut engines: HashMap<String, Box<dyn AsrProvider + Send + Sync>> = HashMap::new();
-    let api_token = crate::state::resolve_provider_key(&cfg.asr, &cfg.default_api_key);
+    let api_token = resolve_provider_key(&cfg.asr, &cfg.default_api_key);
 
     // Mimo ASR (Xiaomi)
     if !api_token.is_empty() {

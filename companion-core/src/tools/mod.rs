@@ -9,8 +9,7 @@ pub mod file_tools;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use serde_json::Value;
-use crate::mcp::{McpTool, McpError};
+use crate::mcp::McpTool;
 use crate::sandbox::Sandbox;
 
 /// Central registry of all available tools.
@@ -65,13 +64,5 @@ impl ToolRegistry {
                 })
             })
             .collect()
-    }
-
-    /// Execute a tool by name.
-    pub async fn execute(&self, name: &str, args: Value) -> Result<Value, McpError> {
-        match self.tools.get(name) {
-            Some(tool) => tool.execute(args).await,
-            None => Err(McpError::ToolNotFound(name.to_string())),
-        }
     }
 }

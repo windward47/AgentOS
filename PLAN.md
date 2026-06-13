@@ -768,6 +768,129 @@ impl AuditLogger {
 
 ---
 
+## 阶段 R2：架构精简 A 轮 + A+ 轮（已完成 ✅）
+
+> 目标：删除死代码、合并重复逻辑、为 B1 重大重构做准备。
+
+### Sprint R2.1 死代码清理（A 轮）
+
+**删除的模块：**
+- `emotion/` — Phase 3 预留 trait，从未接入运行时
+- `llm/` — 降级方案 trait，从未接入
+- `websocket/` — 空文件，仅注释
+- `asr/mock.rs`, `tts/mock.rs` — Mock 实现无人调用
+- `audio/capture.rs`, `audio/vad.rs` — 仅被 VoiceInputService 使用（也已删除）
+- `asr/mod.rs` 中 `VoiceInputService`（~90 行）— 零调用者
+
+**合并的代码：**
+- `chat` + `chat_with_tools` → `do_chat()` 内部辅助函数（去重 40 行）
+- `chat()` 移除未使用的 `_voice` 参数
+
+**结果：** `lib.rs` 从 16 个 `pub mod` 减到 13 个，删除 705 行代码、7 个文件。
+
+### Sprint R2.2 进一步清理（A+ 轮）
+
+**删除：**
+- `audio/mod.rs` 中 `AudioError` 枚举 — 定义了但零引用
+- `tools/mod.rs` 中 `ToolRegistry::execute()` — sidecar 执行工具，Rust 侧从不调用
+
+**搬迁到 config.rs：**
+- `resolve_provider_key()` — 从 `state/mod.rs` 移到 `config.rs`（纯配置逻辑）
+- `ensure_chat_completions_url()` — 同上
+
+**结果：** 零警告编译，18/18 测试通过。
+
+### 当前架构现状
+
+```
+companion-core/ (13 modules)
+├─ agent/        ← OmpAgentSidecar + AgentEngine trait
+├─ asr/          ← AsrProvider trait + 4 实现 (xiaomi, whisper_cloud, whisper_local, aliyun)
+├─ audio/        ← utils.rs (f32→i16, PCM→WAV)
+├─ capture_mgr/  ← cpal 麦克风捕获
+├─ config.rs     ← CompanionConfig + ConfigManager + resolve_provider_key + ensure_chat_completions_url
+├─ downloader.rs ← Live2D 模型下载器
+├─ hotkey/       ← rdev 全局热键
+├─ inject/       ← 键盘/剪贴板/文本读取
+├─ mcp/          ← McpTool trait + McpError
+├─ permissions/  ← AuditLogger + HIGH_RISK_CMDS
+├─ sandbox/      ← 路径沙箱（canonicalize + escape 检测）
+├─ tools/        ← ToolRegistry + 5 个沙箱工具（list/read/write/delete/execute）
+└─ tts/          ← TtsProvider trait + XiaomiTts + playback
+
+companion-tauri/ (Tauri 壳)
+├─ lib.rs        ← Tauri Builder (~100 行)
+├─ main.rs       ← 入口
+├─ state/mod.rs  ← 15 个 IPC 命令 + do_chat() 辅助函数
+└─ voice_handler.rs ← 全局语音热键 ASR/TTS 串联
+
+services/agent-sidecar/ (Bun)
+├─ index.ts      ← JSON-RPC over stdin/stdout
+├─ agent.ts      ← pi-agent-core Agent 包装 + 工具实现
+├─ config.ts     ← omp 配置加载
+└─ protocol.ts   ← JSON-RPC 编解码
+```
+
+**关键偏差（规格书 vs 现实）：**
+1. 对话历史由 Rust **和** Sidecar 各维护一份 → 应归一侧
+2. 工具定义在 Rust 注册，执行在 Sidecar → 两头各管一半
+3. 前端直接调 `chat`/`transcribe`/`synthesize` IPC → 表达式层知道太多
+4. 配置由 `config.rs` **和** sidecar 的 `config.ts` 各读一份 → 两个配置源
+
+---
+
+## 阶段 B1：Sidecar 成为真正的 Agent Core（计划中 📋）
+
+> 目标：修正架构偏差，让 Rust 层做纯粹的桌面壳，Bun sidecar 接管所有 Agent 逻辑。
+> 这是进入 Phase 3 社区扩展之前的必要重构。
+
+### B1a — 配置归一侧
+
+- Sidecar 启动时读取并缓存 `~/.companion/config.json`
+- Rust 删除 `ConfigState` → 改为启动时从 sidecar `get_config` RPC 拉配置
+- `update_config`：前端 → Rust → sidecar RPC → sidecar 写磁盘
+- 删除 `config.rs` 中 provider 路由逻辑（移到 sidecar）
+- **结果：** 配置只有一个来源、一个写入者
+
+### B1b — 历史归一侧
+
+- Sidecar `chat` RPC 返回时附带 `history: ConversationMessage[]`
+- Rust 删除 `AgentState.history`
+- `get_history` / `clear_history` → Rust 转发到 sidecar
+- **结果：** 对话状态完全由 pi-agent-core 管理
+
+### B1c — 工具归一侧
+
+- 删除 Rust 端 `tools/`、`mcp/`、`sandbox/`、`permissions/`
+- Sidecar 工具启动时自动注册，加入路径沙箱
+- 危险命令常量从 `permissions/mod.rs` 移到 sidecar
+- **结果：** 工具层是 sidecar 内部事务
+
+### B1d — 事件总线
+
+- `invoke('agent_action', { type, payload })` — 前端 → Rust → sidecar
+- `listen('agent_event', ...)` — sidecar → Rust → 前端
+- 前端从"调命令"变为"发事件+收事件"
+- **结果：** 表达层不知 LLM/工具的存在
+
+### B1 完成后结构
+
+```
+Rust (Tauri)           ← 真·桌面壳 (~400 行)
+  ├─ 窗口/托盘/热键/麦克风
+  └─ JSON-RPC 桥接 → sidecar
+
+Bun Sidecar            ← 真·Agent Core
+  ├─ 配置/历史/LLM/工具
+  └─ 事件广播
+
+Vue 前端              ← 纯表达层
+  ├─ 收发 agent_action/agent_event
+  └─ 不知 chat/transcribe
+```
+
+---
+
 ## 4. 阶段三：社区与扩展
 
 > 目标：情绪驱动交互、对话风格系统、MCP 插件加载器、社区商店雏形。  

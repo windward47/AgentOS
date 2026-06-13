@@ -7,7 +7,7 @@ use companion_core::agent::omp_sidecar::OmpAgentSidecar;
 use companion_core::agent::{AgentEngine, ConversationMessage, MessageRole, provider_to_model};
 use companion_core::asr::AsrProvider;
 use companion_core::tts::TtsProvider;
-use companion_core::config::{CompanionConfig, ConfigManager};
+use companion_core::config::{CompanionConfig, ConfigManager, resolve_provider_key, ensure_chat_completions_url};
 use companion_core::downloader::{download_model, DownloadProgress};
 use companion_core::permissions::audit::{AuditEvent, AuditLogger};
 use companion_core::tools::ToolRegistry;
@@ -78,14 +78,6 @@ impl ConfigState {
     }
 }
 
-/// Resolve API key: ProviderConfig.key → config.default_api_key → env COMPANION_API_TOKEN → ""
-pub fn resolve_provider_key(prov: &companion_core::config::ProviderConfig, fallback_key: &str) -> String {
-    if let Some(ref k) = prov.key { if !k.is_empty() { return k.clone(); } }
-    if let Ok(tok) = std::env::var("COMPANION_API_TOKEN") { if !tok.is_empty() { return tok; } }
-    fallback_key.to_string()
-}
-
-// ── AuditState ──────────────────────────────────────────────────────────
 
 /// Security audit logging.
 pub struct AuditState {
@@ -184,11 +176,6 @@ pub async fn clear_history(agent: tauri::State<'_, AgentState>) -> Result<(), St
         agent.agent.clear_history().await.map_err(|e| format!("clear history: {e}"))?;
     }
     Ok(())
-}
-
-fn ensure_chat_completions_url(url: &str) -> String {
-    if url.contains("/chat/completions") { url.to_string() }
-    else { format!("{}/chat/completions", url.trim_end_matches('/')) }
 }
 
 #[tauri::command]

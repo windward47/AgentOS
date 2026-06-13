@@ -207,6 +207,19 @@ pub enum ConfigError {
     Json(#[from] serde_json::Error),
 }
 
+/// Resolve API key: ProviderConfig.key → config.default_api_key → env COMPANION_API_TOKEN → ""
+pub fn resolve_provider_key(prov: &ProviderConfig, fallback_key: &str) -> String {
+    if let Some(ref k) = prov.key { if !k.is_empty() { return k.clone(); } }
+    if let Ok(tok) = std::env::var("COMPANION_API_TOKEN") { if !tok.is_empty() { return tok; } }
+    fallback_key.to_string()
+}
+
+/// Normalize a base URL to point at the chat completions endpoint.
+pub fn ensure_chat_completions_url(url: &str) -> String {
+    if url.contains("/chat/completions") { url.to_string() }
+    else { format!("{}/chat/completions", url.trim_end_matches('/')) }
+}
+
 /// Configuration manager — loads, saves, and provides defaults.
 #[derive(Clone)]
 pub struct ConfigManager {
