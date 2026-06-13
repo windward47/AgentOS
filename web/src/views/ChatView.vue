@@ -152,6 +152,7 @@ function stopRecording() {
     voiceInFlight = true  // lock before async stop() — prevents interrupt race
     mediaRecorder.stop()
   }
+  recording.value = false
   analyserNode = null
   vadLevel.value = 0
 }
