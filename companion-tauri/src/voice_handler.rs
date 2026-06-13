@@ -93,13 +93,16 @@ pub async fn handle_voice_command(
             let companion_focused = app.get_webview_window("main")
                 .map(|w| w.is_focused().unwrap_or(false))
                 .unwrap_or(false);
-            log::info!("[GlobalVoice] companion_focused={companion_focused}, emitting event");
+            // Write debug to file since terminal is too noisy
+            let _ = std::fs::write(
+                dirs::home_dir().unwrap_or_default().join(".companion").join("logs").join("voice_debug.log"),
+                format!("[{}] focused={} text_len={}\n", chrono::Local::now().format("%H:%M:%S"), companion_focused, text.len()),
+            );
 
-            if companion_focused {
-                let _ = app.emit("voice_asr_result", serde_json::json!({ "text": &text }));
-                log::info!("[GlobalVoice] event emitted");
-            } else {
-                // Inject into whichever app has focus
+            // Always emit to chat window (works even when chat is focused OR not)
+            let _ = app.emit("voice_asr_result", serde_json::json!({ "text": &text }));
+
+            if !companion_focused {
                 let mode = *inject_mode.lock().unwrap();
                 log::info!("[GlobalVoice] Injecting via {:?}", mode);
                 if let Err(e) = inject_text(&text, mode) {
