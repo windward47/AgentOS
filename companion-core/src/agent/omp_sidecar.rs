@@ -358,7 +358,6 @@ impl AgentEngine for OmpAgentSidecar {
         }
         let result = self.send_request("chat", Some(params)).await?;
         let text = result.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        log::debug!("[chat] sidecar returned text ({} chars): {:?}", text.len(), &text[..text.len().min(80)]);
 
         // B1b: parse history from sidecar response
         let mut conversation_history = Vec::new();

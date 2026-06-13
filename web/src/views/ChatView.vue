@@ -134,10 +134,7 @@ async function startRecording() {
         store.addMessage({ role: 'user', content: text })
         try {
           const reply = await chat(text)
-          console.log('[ChatView] voice chat reply role=assistant, content:', reply.slice(0, 100))
-          console.log('[ChatView] messages BEFORE push:', store.messages.length, 'roles:', store.messages.map(m => m.role))
           store.addMessage({ role: 'assistant', content: reply })
-          console.log('[ChatView] messages AFTER push:', store.messages.length, 'roles:', store.messages.map(m => m.role))
         } catch (err: any) { store.addMessage({ role: 'assistant', content: String(err) }) }
         finally { store.setSending(false) }
       } catch (err: any) { showToast('ASR: ' + String(err)); console.error('ASR error:', err) }
@@ -367,7 +364,6 @@ async function send() {
   store.addMessage({ role: 'user', content: text })
   try {
     const reply = await chat(text)
-    console.log('[ChatView] text chat reply role=assistant, content:', reply.slice(0, 100))
     store.addMessage({ role: 'assistant', content: reply })
   } catch (err: any) { store.addMessage({ role: 'assistant', content: String(err) }) }
   finally { store.setSending(false) }
@@ -552,8 +548,6 @@ async function doBrowseScreenshot() {
           <p class="text-sm text-gray-400">Type or press {{ hotkey }} to speak</p>
         </div>
         <template v-for="(m, i) in messages" :key="i">
-          <!-- DEBUG: visible role label -->
-          <div class="text-[10px] text-gray-300 mb-0.5">[{{ i }}] role={{ m.role }}</div>
           <div v-if="m.role === 'user'" class="flex justify-end">
             <div class="max-w-[75%] rounded-2xl rounded-br-md bg-blue-500 text-white px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap">{{ m.content }}</div>
           </div>
