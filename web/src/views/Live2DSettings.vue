@@ -44,13 +44,13 @@ function resetAvatar() {
 }
 
 function modelLabel(path: string) {
-  // Extract meaningful name from path like "Epsilon/runtime/Epsilon.model3.json" → "Epsilon"
-  // or "mao_pro_zh/mao_pro_zh/runtime/mao_pro.model3.json" → "Mao Pro"
   const parts = path.split('/')
-  // Use the first meaningful non-runtime directory name
+  // Use first two meaningful parts for disambiguation
   const dir = parts[0] || ''
-  // Clean up: remove _zh/_jp/_en suffixes, replace underscores with spaces, capitalize
-  return dir
+  const sub = parts.length > 2 ? parts[1] : ''
+  // For Kei variants: show "Kei Basic Free" vs "Kei Vowels Pro"
+  const label = sub ? `${dir}/${sub}` : dir
+  return label
     .replace(/_zh$/, '').replace(/_jp$/, '').replace(/_en$/, '').replace(/_pro$/, ' Pro')
     .replace(/_/g, ' ')
     .replace(/\b\w/g, c => c.toUpperCase())
