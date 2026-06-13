@@ -89,19 +89,14 @@ pub async fn handle_voice_command(
             }
             log::info!("[GlobalVoice] ASR result: {} chars", text.len());
 
-            // Emit to chat input via Tauri event (always works)
+            // Emit to chat input via Tauri event
             let _ = app.emit("voice_asr_result", serde_json::json!({ "text": &text }));
 
-            // Only inject into non-Companion apps via keyboard simulation
-            let main_visible = app.get_webview_window("main")
-                .map(|w| w.is_visible().unwrap_or(true))
-                .unwrap_or(true);
-            if !main_visible {
-                let mode = *inject_mode.lock().unwrap();
-                log::info!("[GlobalVoice] Injecting via {:?}", mode);
-                if let Err(e) = inject_text(&text, mode) {
-                    log::error!("[GlobalVoice] Injection failed: {}", e);
-                }
+            // Also inject into focused app (works in any application)
+            let mode = *inject_mode.lock().unwrap();
+            log::info!("[GlobalVoice] Injecting via {:?}", mode);
+            if let Err(e) = inject_text(&text, mode) {
+                log::error!("[GlobalVoice] Injection failed: {}", e);
             }
         }
 
