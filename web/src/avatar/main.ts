@@ -5,6 +5,7 @@ import 'pixi-live2d-display/cubism4';
 const MODEL = '/live2d/models/haru/haru.model3.json';
 let app: PIXI.Application, model: Live2DModel | null = null;
 let currentModelPath = 'haru/haru.model3.json'; // track active model
+let hooked = false; // parameter hook state
 let mouthOpen = 0, currentScale = 0.12;
 const DEF_SCALE = 0.12;
 const DEF_X = 0.35, DEF_Y = 0.35; // default position (window fraction)
@@ -121,7 +122,6 @@ async function init() {
   }
   await loadModel(currentModelPath);
 
-  let hooked = false;
   app.ticker.add(() => {
     if (!model) return;
     const b = (model as any).internalModel?.coreModel;
