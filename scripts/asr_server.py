@@ -24,6 +24,10 @@ async def transcribe(file: UploadFile = File(...)):
     finally:
         os.unlink(tmp)
 
+@app.get("/v1/models")
+async def list_models():
+    return {"object": "list", "data": [{"id": "sensevoice", "object": "model"}]}
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8000)
