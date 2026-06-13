@@ -129,32 +129,46 @@ pub async fn handle_voice_command(
                 return;
             }
 
+            let provider = cfg_guard.global_voice.tts_provider.clone();
             let voice = cfg_guard.global_voice.tts_voice.clone();
             let speed = cfg_guard.global_voice.tts_speed;
             drop(cfg_guard);
 
-            // Alt+T always uses Xiaomi cloud (global hotkey path)
-            // If config voice is an Edge voice, fall back to 茉莉
-            let xiaomi_voice = if voice.starts_with("zh-CN-") { "茉莉" } else { &voice };
-
-            let tts = XiaomiTts::new(&api_token, xiaomi_voice);
-            match tts.synthesize(&text).await {
-                Ok(pcm_f32) => {
-                    log::info!("[GlobalVoice] TTS synthesized {} f32 samples", pcm_f32.len());
-                    app.state::<VoiceState>().is_speaking.store(true, Ordering::Release);
-                    let sample_rate = (24000.0 * speed) as u32;
-                    animate_lip_sync(&pcm_f32, sample_rate, app);
-
-                    let i16 = f32_to_i16(&pcm_f32);
-                    match pcm_i16_to_wav(&i16, 24000) {
-                        Ok(wav) => {
-                            log::info!("[GlobalVoice] WAV encoded {} bytes, starting playback", wav.len());
-                            playback::play_wav_async(wav);
-                        }
-                        Err(e) => log::error!("[GlobalVoice] WAV encoding failed: {}", e),
+            let pcm_f32 = if provider == "local_cosyvoice" {
+                // Call local TTS server directly
+                let client = reqwest::Client::new();
+                let resp = client.post("http://localhost:50002/v1/audio/speech")
+                    .json(&serde_json::json!({"model":"edge-tts","input":&text,"voice":&voice}))
+                    .send().await;
+                match resp {
+                    Ok(r) if r.status().is_success() => {
+                        let bytes = r.bytes().await.unwrap_or_default();
+                        let f32s: Vec<f32> = bytes.chunks_exact(4).map(|c| f32::from_le_bytes([c[0],c[1],c[2],c[3]])).collect();
+                        f32s
                     }
+                    Ok(r) => { log::error!("[GlobalVoice] Local TTS HTTP {}", r.status()); return; }
+                    Err(e) => { log::error!("[GlobalVoice] Local TTS error: {e}"); return; }
                 }
-                Err(e) => log::error!("[GlobalVoice] TTS synthesis failed: {}", e),
+            } else {
+                let tts = XiaomiTts::new(&api_token, &voice);
+                match tts.synthesize(&text).await {
+                    Ok(p) => p,
+                    Err(e) => { log::error!("[GlobalVoice] TTS synthesis failed: {}", e); return; }
+                }
+            };
+
+            log::info!("[GlobalVoice] TTS synthesized {} f32 samples", pcm_f32.len());
+            app.state::<VoiceState>().is_speaking.store(true, Ordering::Release);
+            let sample_rate = (24000.0 * speed) as u32;
+            animate_lip_sync(&pcm_f32, sample_rate, app);
+
+            let i16 = f32_to_i16(&pcm_f32);
+            match pcm_i16_to_wav(&i16, 24000) {
+                Ok(wav) => {
+                    log::info!("[GlobalVoice] WAV encoded {} bytes, starting playback", wav.len());
+                    playback::play_wav_async(wav);
+                }
+                Err(e) => log::error!("[GlobalVoice] WAV encoding failed: {}", e),
             }
         }
 

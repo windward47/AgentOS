@@ -127,7 +127,11 @@ pub struct GlobalVoiceConfig {
     #[serde(default = "default_global_tts_engine")]
     pub tts_engine: String,
 
-    /// TTS voice for global hotkey Alt+T (Xiaomi voices only)
+    /// TTS provider for global hotkey: "xiaomi" | "local_cosyvoice"
+    #[serde(default = "default_tts")]
+    pub tts_provider: String,
+
+    /// TTS voice for global hotkey Alt+T
     #[serde(default = "default_tts_voice")]
     pub tts_voice: String,
 
@@ -146,6 +150,7 @@ impl Default for GlobalVoiceConfig {
             inject_mode: default_inject_mode(),
             asr_engine: default_global_asr_engine(),
             tts_engine: default_global_tts_engine(),
+            tts_provider: "xiaomi".into(),
             tts_voice: default_tts_voice(),
             tts_speed: default_tts_speed(),
         }
