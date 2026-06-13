@@ -78,9 +78,9 @@ let isPinned = true; // default from tauri.conf.json: alwaysOnTop=true
 
 document.addEventListener('wheel', (e) => { e.preventDefault(); currentScale += e.deltaY > 0 ? -0.02 : 0.02; currentScale = Math.max(0.06, Math.min(0.50, currentScale)); if (model) model.scale.set(currentScale); try { localStorage.setItem('avatar_scale', String(currentScale)); } catch {} }, { passive: false });
 
-// Tap reaction — trigger a random expression (Haru has no dedicated tap motions)
-// Expressions F01-F08 are brief facial changes that auto-reset after ~1s
-const TAP_EXPRESSIONS = ["F01", "F02", "F03", "F04", "F05", "F06", "F07", "F08"];
+// Tap reaction — play a prominent idle motion (larger = more visible)
+// Indices of Haru's most animated motions (by file size / keyframe count)
+const TAP_MOTIONS = [10, 22, 9, 21, 20, 4, 26, 12];
 
 // Middle-mouse drag to reposition the model within the window
 let dragModel = false, dragMx = 0, dragMy = 0, dragOx = 0, dragOy = 0;
@@ -95,10 +95,13 @@ document.addEventListener('mousedown', (e) => {
     const hitName = Array.isArray(raw) ? raw[0] : raw;
     if (!hitName) return; // missed the model entirely
     console.log('[Haru] poke:', hitName);
-    const expr = TAP_EXPRESSIONS[Math.floor(Math.random() * TAP_EXPRESSIONS.length)];
-    Promise.resolve((model as any).expression?.(expr))
-      .then(() => console.log('[Haru] expression:', expr))
-      .catch((e: any) => console.warn('[Haru] expression failed:', expr, e));
+    const idx = TAP_MOTIONS[Math.floor(Math.random() * TAP_MOTIONS.length)];
+    try { (model as any).motion?.("Idle", idx); }
+    catch (e) { console.warn('[Haru] motion failed:', idx, e); }
+    // Subtle scale nudge for tactile feedback
+    const orig = currentScale;
+    model.scale.set(orig + 0.02);
+    setTimeout(() => model?.scale.set(orig), 100);
   }
 });
 document.addEventListener('mousemove', (e) => {
