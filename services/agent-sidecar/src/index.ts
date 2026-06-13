@@ -90,15 +90,6 @@ async function handleRequest(req: { id: string; method: string; params?: Record<
                 break;
             }
 
-            case "register_tools": {
-                const p = (params ?? {}) as { tools?: Array<Record<string, unknown>>; sandbox_root?: string };
-                if (p.tools) {
-                    agentManager.registerToolsFromDefs(p.tools as any, p.sandbox_root || ".");
-                }
-                send(id, "result", { ok: true });
-                break;
-            }
-
             case "clear_history": {
                 agentManager.clearHistory();
                 send(id, "result", { ok: true });

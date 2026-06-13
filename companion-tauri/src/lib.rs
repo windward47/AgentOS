@@ -22,7 +22,7 @@ use tauri::{
 };
 
 use state::{
-    AgentState, VoiceState, ConfigState, AuditState, ToolState,
+    AgentState, VoiceState, ConfigState,
 };
 use voice_handler::{
     VoiceCommand, handle_voice_command, build_global_asr_engines,
@@ -45,25 +45,6 @@ pub fn run() {
         // ── Register domain states ──
         .manage(AgentState::new())
         .manage(VoiceState::new())
-        .manage(ToolState::new(
-            ConfigManager::new()
-                .map(|m| m.root_dir().join("sandbox"))
-                .unwrap_or_else(|_| {
-                    dirs::home_dir()
-                        .unwrap_or_default()
-                        .join(".companion")
-                        .join("sandbox")
-                }),
-        ))
-        .manage(AuditState::new(
-            &ConfigManager::new()
-                .map(|m| m.root_dir())
-                .unwrap_or_else(|_| {
-                    dirs::home_dir()
-                        .unwrap_or_default()
-                        .join(".companion")
-                }),
-        ))
         // ConfigState — constructed with loaded config first
         .manage({
             let config_manager =
@@ -78,7 +59,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             state::chat,
-            state::chat_with_tools,
             state::get_history,
             state::clear_history,
             state::transcribe_audio,

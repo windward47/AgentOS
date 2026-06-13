@@ -4,6 +4,7 @@
 import { Agent, type AgentEvent, type AgentTool } from "@oh-my-pi/pi-agent-core";
 import type { Api, Model } from "@oh-my-pi/pi-ai";
 import { buildPiModel, loadConfig, resolveModelRole, loadCompanionConfig, saveCompanionConfig, type CompanionConfig } from "./config";
+import { sandboxResolve, hasDangerousChars, isHighRisk, logAudit } from "./sandbox";
 
 // ── DuckDuckGo web search (zero-config, always available) ─────────────
 
@@ -163,6 +164,113 @@ export interface AgentCallbacks {
     onError: (message: string) => void;
 }
 
+// ── Sandbox tools ──────────────────────────────────────────────────────
+
+function makeSandboxTools(sandboxRoot: string): AgentTool[] {
+    const safe = (rel: string) => sandboxResolve(rel || ".", sandboxRoot);
+
+    return [
+        {
+            name: "sandbox_list",
+            label: "List Sandbox",
+            description: "List files and directories in the sandbox.",
+            parameters: { type: "object", properties: { path: { type: "string", description: "Relative path (default: root)" } } },
+            execute: async (_id: string, params: any) => {
+                try {
+                    const dir = safe(params.path || ".");
+                    const glob = new Glob("*");
+                    const entries = Array.from(glob.scanSync({ cwd: dir, absolute: false }));
+                    const items: Array<{ name: string; type: string; size: number }> = [];
+                    for (const e of entries) {
+                        const full = `${dir}/${e}`.replace(/\/+/g, "/");
+                        let type = "file", size = 0;
+                        try { size = readFileSync(full, "utf-8").length; } catch { type = "directory"; }
+                        items.push({ name: e, type, size });
+                    }
+                    logAudit("sandbox_list", `path=${params.path || "."}, entries=${items.length}`);
+                    return { content: [{ type: "text" as const, text: JSON.stringify({ entries: items }, null, 2) }] };
+                } catch (err: any) {
+                    return { content: [{ type: "text" as const, text: `sandbox_list error: ${err.message}` }] };
+                }
+            },
+        },
+        {
+            name: "sandbox_read",
+            label: "Read Sandbox File",
+            description: "Read a file inside the sandbox.",
+            parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+            execute: async (_id: string, params: any) => {
+                try {
+                    const path = safe(params.path);
+                    const text = readFileSync(path, "utf-8").slice(0, 20000);
+                    logAudit("sandbox_read", `path=${params.path}`);
+                    return { content: [{ type: "text" as const, text: JSON.stringify({ content: text }) }] };
+                } catch (err: any) {
+                    return { content: [{ type: "text" as const, text: `sandbox_read error: ${err.message}` }] };
+                }
+            },
+        },
+        {
+            name: "sandbox_write",
+            label: "Write Sandbox File",
+            description: "Write content to a file inside the sandbox.",
+            parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] },
+            execute: async (_id: string, params: any) => {
+                try {
+                    const path = safe(params.path);
+                    writeFileSync(path, params.content, "utf-8");
+                    logAudit("sandbox_write", `path=${params.path}, bytes=${params.content.length}`);
+                    return { content: [{ type: "text" as const, text: JSON.stringify({ path, size: params.content.length }) }] };
+                } catch (err: any) {
+                    return { content: [{ type: "text" as const, text: `sandbox_write error: ${err.message}` }] };
+                }
+            },
+        },
+        {
+            name: "sandbox_delete",
+            label: "Delete Sandbox File",
+            description: "Delete a file or empty directory inside the sandbox.",
+            parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+            execute: async (_id: string, params: any) => {
+                try {
+                    const path = safe(params.path);
+                    if (existsSync(path)) {
+                        const s = statSync(path);
+                        if (s.isDirectory()) rmdirSync(path);
+                        else unlinkSync(path);
+                    }
+                    logAudit("sandbox_delete", `path=${params.path}`);
+                    return { content: [{ type: "text" as const, text: JSON.stringify({ deleted: params.path }) }] };
+                } catch (err: any) {
+                    return { content: [{ type: "text" as const, text: `sandbox_delete error: ${err.message}` }] };
+                }
+            },
+        },
+        {
+            name: "sandbox_execute",
+            label: "Execute in Sandbox",
+            description: "Run a command inside the sandbox directory. High-risk commands are blocked.",
+            parameters: { type: "object", properties: { command: { type: "string" } }, required: ["command"] },
+            execute: async (_id: string, params: any) => {
+                try {
+                    const cmd = params.command as string;
+                    if (hasDangerousChars(cmd)) {
+                        throw new Error("command contains dangerous characters");
+                    }
+                    if (isHighRisk(cmd)) {
+                        throw new Error(`'${cmd.split(/\s+/)[0]}' is a high-risk command.`);
+                    }
+                    logAudit("sandbox_execute", `command=${cmd}`);
+                    const output = execSync(cmd, { encoding: "utf-8", timeout: 30_000, cwd: sandboxRoot }).slice(0, 4000);
+                    return { content: [{ type: "text" as const, text: output || "(no output)" }] };
+                } catch (err: any) {
+                    return { content: [{ type: "text" as const, text: `sandbox_execute error: ${err.message}` }] };
+                }
+            },
+        },
+    ];
+}
+
 // ── Web tools (DuckDuckGo — free, zero config) ─────────────────────
 
 /** Search the web via DuckDuckGo (free, zero config). Always works. */
@@ -251,7 +359,13 @@ export class AgentManager {
             },
             getApiKey: () => this.apiKey,
         });
-        agent.setTools([WEB_SEARCH_TOOL, WEB_FETCH_TOOL, TOOL_READ, TOOL_WRITE, TOOL_SEARCH, TOOL_FIND, TOOL_BASH]);
+        // All tools registered at startup — no runtime registration needed
+        const sandboxTools = makeSandboxTools(this.companionConfig.sandbox_path);
+        agent.setTools([
+            ...sandboxTools,
+            WEB_SEARCH_TOOL, WEB_FETCH_TOOL,
+            TOOL_READ, TOOL_WRITE, TOOL_SEARCH, TOOL_FIND, TOOL_BASH,
+        ]);
         return agent;
     }
 
@@ -396,86 +510,6 @@ export class AgentManager {
      * Register tools from JSON definitions (from Rust).
      * Each tool def has name, description, parameters (JSON Schema).
      */
-    registerToolsFromDefs(toolDefs: Array<{
-        name: string;
-        description: string;
-        parameters: Record<string, unknown>;
-    }>, sandboxRoot: string): void {
-        // Resolve relative paths against the sandbox root.
-        const resolve = (rel: string): string => {
-            return `${sandboxRoot}/${rel}`.replace(/\/+/g, "/");
-        };
-        const tools: AgentTool[] = toolDefs.map((def) => ({
-            name: def.name,
-            label: def.name,
-            description: def.description,
-            parameters: def.parameters as any,
-            execute: async (_toolCallId: string, params: any) => {
-                try {
-                    switch (def.name) {
-                        case "sandbox_list": {
-                            const dir = resolve(params.path || ".");
-                            const glob = new Glob("*");
-                            const entries = Array.from(glob.scanSync({ cwd: dir, absolute: false }));
-                            const items: Array<{ name: string; type: string; size: number }> = [];
-                            for (const e of entries) {
-                                const full = `${dir}/${e}`.replace(/\/+/g, "/");
-                                let type: string = "file";
-                                let size = 0;
-                                try {
-                                    const stat = readFileSync(full, "utf-8");
-                                    size = stat.length;
-                                } catch {
-                                    type = "directory";
-                                }
-                                items.push({ name: e, type, size });
-                            }
-                            return { content: [{ type: "text" as const, text: JSON.stringify({ entries: items }, null, 2) }] };
-                        }
-                        case "sandbox_read": {
-                            const path = resolve(params.path);
-                            const text = readFileSync(path, "utf-8").slice(0, 20000);
-                            return { content: [{ type: "text" as const, text: JSON.stringify({ content: text }) }] };
-                        }
-                        case "sandbox_write": {
-                            const path = resolve(params.path);
-                            writeFileSync(path, params.content, "utf-8");
-                            return { content: [{ type: "text" as const, text: JSON.stringify({ path, size: params.content.length }) }] };
-                        }
-                        case "sandbox_delete": {
-                            const path = resolve(params.path);
-                            if (existsSync(path)) {
-                                const s = statSync(path);
-                                if (s.isDirectory()) rmdirSync(path);
-                                else unlinkSync(path);
-                            }
-                            return { content: [{ type: "text" as const, text: JSON.stringify({ deleted: params.path }) }] };
-                        }
-                        case "sandbox_execute": {
-                            const cmd = params.command as string;
-                            if (/[;&|$`\n\r]/.test(cmd)) {
-                                return { content: [{ type: "text" as const, text: "sandbox_execute error: command contains dangerous characters" }] };
-                            }
-                            const output = execSync(cmd, { encoding: "utf-8", timeout: 30_000, cwd: sandboxRoot }).slice(0, 4000);
-                            return { content: [{ type: "text" as const, text: output || "(no output)" }] };
-                        }
-                        default:
-                            return { content: [{ type: "text" as const, text: `Tool ${def.name} is not implemented.` }] };
-                    }
-                } catch (err: any) {
-                    return { content: [{ type: "text" as const, text: `${def.name} error: ${err.message}` }] };
-                }
-            },
-        })) as unknown as AgentTool[];
-
-        this.agent.setTools(tools);
-    }
-
-    /**
-     * Load omp's built-in read/write/search tools.
-     * This registers tools that come from @oh-my-pi/pi-agent-core's default tool set.
-     */
-    loadOmnTools(): void {
         // Currently, pi-agent-core's Agent class doesn't auto-load omp tools.
         // Tools need to be explicitly set. For now, we use only explicitly registered tools.
         // This will be expanded in a future update.

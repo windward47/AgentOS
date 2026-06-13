@@ -294,17 +294,6 @@ impl OmpAgentSidecar {
         self.send_request("get_history", None).await
     }
 
-    /// Register sandbox tool definitions with the sidecar so the LLM can call them.
-    /// `defs` should come from [`crate::tools::ToolRegistry::definitions()`].
-    pub async fn register_tools(&self, defs: Vec<Value>, sandbox_root: &str) -> Result<(), AgentError> {
-        let params = serde_json::json!({
-            "tools": defs,
-            "sandbox_root": sandbox_root,
-        });
-        self.send_request("register_tools", Some(params)).await?;
-        Ok(())
-    }
-
     /// Get the full CompanionConfig from the sidecar (B1a: sidecar is config authority).
     pub async fn get_config(&self) -> Result<Value, AgentError> {
         self.send_request("get_config", None).await

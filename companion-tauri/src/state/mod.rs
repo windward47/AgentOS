@@ -9,8 +9,6 @@ use companion_core::asr::AsrProvider;
 use companion_core::tts::TtsProvider;
 use companion_core::config::{CompanionConfig, ConfigManager, resolve_provider_key, ensure_chat_completions_url};
 use companion_core::downloader::{download_model, DownloadProgress};
-use companion_core::permissions::audit::{AuditEvent, AuditLogger};
-use companion_core::tools::ToolRegistry;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -96,36 +94,6 @@ impl ConfigState {
     }
 }
 
-
-/// Security audit logging.
-pub struct AuditState {
-    pub audit: AuditLogger,
-}
-
-impl AuditState {
-    pub fn new(data_root: &std::path::Path) -> Self {
-        Self {
-            audit: AuditLogger::new(&data_root.to_path_buf())
-                .expect("failed to init audit logger"),
-        }
-    }
-}
-
-// ── ToolState ───────────────────────────────────────────────────────────
-
-/// Tool registry — all MCP tools accessible by the agent.
-pub struct ToolState {
-    pub tools: Arc<ToolRegistry>,
-}
-
-impl ToolState {
-    pub fn new(sandbox_root: std::path::PathBuf) -> Self {
-        Self {
-            tools: Arc::new(ToolRegistry::with_builtins(sandbox_root)),
-        }
-    }
-}
-
 // ═══════════════════════════════════════════════════════════════════════
 // Tauri IPC Commands
 // ═══════════════════════════════════════════════════════════════════════
@@ -134,7 +102,6 @@ impl ToolState {
 async fn do_chat(
     agent: &AgentState,
     config: &ConfigState,
-    tools: Option<&ToolState>,
     message: String,
 ) -> Result<String, String> {
     if !agent.agent.is_running().await {
@@ -142,12 +109,6 @@ async fn do_chat(
             .map_err(|e| format!("Sidecar spawn failed: {e}"))?;
         // B1a: sync config from sidecar (now the single source of truth)
         config.sync_from_sidecar(&agent.agent).await?;
-    }
-    if let Some(t) = tools {
-        let cfg = config.config.lock().await;
-        let root = cfg.sandbox_path.to_string_lossy().to_string();
-        agent.agent.register_tools(t.tools.definitions(), &root).await
-            .map_err(|e| format!("Register tools: {e}"))?;
     }
     let system_prompt = config.config.lock().await.custom_system_prompt.clone();
     // B1b: history is managed by sidecar; pass empty (sidecar has its own)
@@ -162,17 +123,7 @@ pub async fn chat(
     config: tauri::State<'_, ConfigState>,
     message: String,
 ) -> Result<String, String> {
-    do_chat(&agent, &config, None, message).await
-}
-
-#[tauri::command]
-pub async fn chat_with_tools(
-    agent: tauri::State<'_, AgentState>,
-    config: tauri::State<'_, ConfigState>,
-    tools: tauri::State<'_, ToolState>,
-    message: String,
-) -> Result<String, String> {
-    do_chat(&agent, &config, Some(&tools), message).await
+    do_chat(&agent, &config, message).await
 }
 
 #[tauri::command]
@@ -257,21 +208,15 @@ pub async fn get_config(
 pub async fn update_config(
     config: tauri::State<'_, ConfigState>,
     agent: tauri::State<'_, AgentState>,
-    audit: tauri::State<'_, AuditState>,
     new_config: CompanionConfig,
 ) -> Result<(), String> {
     // B1a: sidecar owns config.json — push update to sidecar
     let val = serde_json::to_value(&new_config).map_err(|e| format!("serialize: {e}"))?;
     config.push_to_sidecar(&agent.agent, val).await?;
 
-    let was_mode = config
+    let _was_mode = config
         .system_mode
         .swap(new_config.system_mode, Ordering::SeqCst);
-    if was_mode != new_config.system_mode {
-        audit
-            .audit
-            .log(AuditEvent::ModeSwitch { from: was_mode, to: new_config.system_mode });
-    }
     let model = provider_to_model(&new_config.llm_provider).to_string();
     agent.agent.set_model(model).await;
     Ok(())
@@ -503,10 +448,12 @@ pub async fn browse_screenshot(url: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn get_audit_log(
-    audit: tauri::State<'_, AuditState>,
-) -> Result<String, String> {
-    let path = audit.audit.path();
+pub async fn get_audit_log() -> Result<String, String> {
+    let path = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".companion")
+        .join("logs")
+        .join("command.log");
     if !path.exists() {
         return Ok("(no logs yet)".into());
     }

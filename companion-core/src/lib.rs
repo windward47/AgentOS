@@ -11,8 +11,4 @@ pub mod capture_mgr;
 pub mod downloader;
 pub mod hotkey;
 pub mod inject;
-pub mod mcp;
-pub mod permissions;
-pub mod sandbox;
-pub mod tools;
 pub mod tts;
