@@ -137,3 +137,29 @@ export async function synthesizeAudio(
     const pcm = parseWavToF32(wavBytes);
     return Array.from(pcm);
 }
+
+// ── Local ASR/TTS (FunASR / CosyVoice2 OpenAI-compatible API) ─────
+
+export async function transcribeLocal(audio: number[]): Promise<string> {
+    const dataUrl = f32ToWavBase64(audio);
+    const b64 = dataUrl.split(",")[1] ?? dataUrl;
+    const wavBuf = Buffer.from(b64, "base64");
+    const form = new FormData();
+    form.append("file", new Blob([wavBuf], { type: "audio/wav" }), "audio.wav");
+    form.append("model", "sensevoice");
+    const resp = await fetch("http://localhost:8000/v1/audio/transcriptions", { method: "POST", body: form });
+    if (!resp.ok) throw new Error(`FunASR HTTP ${resp.status}`);
+    const data: any = await resp.json();
+    return data.text?.trim() ?? "";
+}
+
+export async function synthesizeLocal(text: string, voice: string): Promise<number[]> {
+    const resp = await fetch("http://localhost:50000/v1/audio/speech", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "cosyvoice2", input: text, voice }),
+    });
+    if (!resp.ok) throw new Error(`CosyVoice HTTP ${resp.status}`);
+    const buf = Buffer.from(await resp.arrayBuffer());
+    return Array.from(parseWavToF32(buf));
+}

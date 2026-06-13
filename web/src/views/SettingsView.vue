@@ -84,8 +84,8 @@ async function detectModels(kind: 'llm' | 'asr' | 'tts') {
 // ── Provider UI helpers ──
 const PRESET_URLS: Record<string, Record<string, string>> = {
   llm: { siliconflow: 'https://api.siliconflow.cn/v1', xiaomi: 'https://token-plan-cn.xiaomimimo.com/v1' },
-  asr: { xiaomi: 'https://token-plan-cn.xiaomimimo.com/v1' },
-  tts: { xiaomi: 'https://token-plan-cn.xiaomimimo.com/v1' },
+  asr: { xiaomi: 'https://token-plan-cn.xiaomimimo.com/v1', local_funasr: 'http://localhost:8000/v1' },
+  tts: { xiaomi: 'https://token-plan-cn.xiaomimimo.com/v1', local_cosyvoice: 'http://localhost:50000/v1' },
 }
 const PRESET_PROVIDERS: Record<string, string[]> = {
   llm: ['ollama', 'openai', 'local'],
@@ -147,6 +147,7 @@ function onProviderChange(kind: 'llm' | 'asr' | 'tts') {
             <label class="block text-sm font-medium text-gray-700 mb-1.5">ASR Provider</label>
             <select v-model="config.asr_provider" @change="onProviderChange('asr')" class="block w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors">
               <option value="xiaomi">Xiaomi</option>
+              <option value="local_funasr">Local FunASR</option>
               <option value="custom">Custom…</option>
             </select>
           </div>
@@ -154,6 +155,7 @@ function onProviderChange(kind: 'llm' | 'asr' | 'tts') {
             <label class="block text-sm font-medium text-gray-700 mb-1.5">TTS Provider</label>
             <select v-model="config.tts_provider" @change="onProviderChange('tts')" class="block w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors">
               <option value="xiaomi">Xiaomi</option>
+              <option value="local_cosyvoice">Local CosyVoice</option>
               <option value="custom">Custom…</option>
             </select>
           </div>
