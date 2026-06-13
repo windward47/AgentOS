@@ -325,49 +325,24 @@ pub async fn get_voice_state(voice: tauri::State<'_, VoiceState>) -> Result<Stri
 }
 
 /// List available Live2D models from web/public/live2d/models/.
+/// Returns relative paths to .model3.json files for verified-compatible models.
 #[tauri::command]
 pub async fn list_live2d_models() -> Result<Vec<String>, String> {
-    let base = std::env::current_dir().unwrap_or_default();
-    let root = if base.ends_with("companion-tauri") {
-        base.parent().unwrap_or(&base).to_path_buf()
-    } else {
-        base
-    };
-    let models_dir = root.join("web").join("public").join("live2d").join("models");
-    let mut models = Vec::new();
-    find_model3_json(&models_dir, &models_dir, &mut models);
-    models.sort();
-    Ok(models)
-}
-
-fn find_model3_json(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec<String>) {
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let name = path.file_name().unwrap_or_default().to_string_lossy();
-            if name.starts_with('.') || name == "node_modules" { continue; }
-            if path.is_dir() {
-                find_model3_json(&path, base, out);
-            } else if name.ends_with(".model3.json") {
-                if let Ok(rel) = path.strip_prefix(base) {
-                    let rel_str = rel.to_string_lossy().replace('\\', "/");
-                    // Skip nested runtime/ sub-entries when a sibling .model3.json exists closer to root
-                    let parent_dir = rel.parent().unwrap_or(rel);
-                    let parent_name = parent_dir.file_name().unwrap_or_default().to_string_lossy();
-                    if parent_name == "runtime" {
-                        // Check if there's a model3.json at a higher level for this model
-                        let grandparent = parent_dir.parent().unwrap_or(parent_dir);
-                        let already = out.iter().any(|m| m.starts_with(&grandparent.to_string_lossy().replace('\\', "/")));
-                        if already { continue; }
-                    }
-                    // Skip if path goes too deep (indicates duplicate runtime copy)
-                    let depth = rel_str.matches('/').count();
-                    if depth > 3 { continue; }
-                    out.push(rel_str);
-                }
-            }
-        }
-    }
+    // Verified-compatible models (tested with Cubism SDK 5.1.0).
+    // Excluded: Epsilon (.cmo3 format, not C3), ren (moc3 v6).
+    let working: &[&str] = &[
+        "haru/haru.model3.json",
+        "haru_greeter_pro_jp/haru_greeter_pro_jp/runtime/haru_greeter_t05.model3.json",
+        "hiyori_pro_zh/hiyori_pro_zh/runtime/hiyori_pro_t11.model3.json",
+        "kei_zh/kei_zh/kei_basic_free/runtime/kei_basic_free.model3.json",
+        "kei_zh/kei_zh/kei_vowels_pro/runtime/kei_vowels_pro.model3.json",
+        "mao_pro_zh/mao_pro_zh/runtime/mao_pro.model3.json",
+        "miara_pro_en/miara_pro_en/runtime/miara_pro_t03.model3.json",
+        "miku_pro_jp/miku_pro_jp/runtime/miku_sample_t04.model3.json",
+        "natori_pro_zh/natori_pro_zh/runtime/natori_pro_t06.model3.json",
+        "rice_pro_zh/rice_pro_zh/runtime/rice_pro_t03.model3.json",
+    ];
+    Ok(working.iter().map(|s| s.to_string()).collect())
 }
 
 /// Tell the avatar window to switch to a different model.

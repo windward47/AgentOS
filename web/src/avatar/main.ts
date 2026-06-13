@@ -150,28 +150,29 @@ async function init() {
     curBrow += (tgtBrow - curBrow) * 0.15;
 
     if (!hooked) {
+      try {
       const orig = b.saveParameters.bind(b);
       b.saveParameters = () => {
+        try {
         const blinkT = Date.now() % 4000 / 4000;
         const eyeOpen = blinkT > 0.95 ? 0.05 : 1.0;
         const idle = Date.now() > eyeIdleAt;
         b.setParameterValueById('ParamMouthOpenY', mouthOpen, 1);
         b.setParameterValueById('ParamEyeLOpen', eyeOpen, 1);
         b.setParameterValueById('ParamEyeROpen', eyeOpen, 1);
-        // Listening: raise eyebrows (more visible than eye deformation)
         b.setParameterValueById('ParamBrowLY', curBrow, 1);
         b.setParameterValueById('ParamBrowRY', curBrow, 1);
-        // head turn: mouse tracking + listening bias
-        // Listening: big head turn + apply expression
         b.setParameterValueById('ParamAngleX', (idle ? 0 : eyeTargetX * 30) + curAngle, 1);
         b.setParameterValueById('ParamAngleY', idle ? 0 : -eyeTargetY * 30, 1);
         if (voiceState === 'listening') {
-          b.setParameterValueById('ParamAngleZ', 10, 1); // slight tilt
+          b.setParameterValueById('ParamAngleZ', 10, 1);
         }
         orig();
+        } catch (e) { /* model may not have these params */ }
       };
       hooked = true;
       console.log('[Haru] hooked ✓');
+      } catch (e) { console.warn('[Haru] hook failed:', e); }
     }
   });
 
