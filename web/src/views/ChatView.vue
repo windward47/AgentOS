@@ -413,7 +413,6 @@ import('@tauri-apps/api/event').then(m => {
   })
   // Alt+` global hotkey: insert ASR result into chat input
   m.listen<{ text: string }>('voice_asr_result', (evt) => {
-    console.log('[voice_asr_result]', evt.payload.text)
     input.value = evt.payload.text
   })
 }).catch(() => {})
