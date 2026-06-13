@@ -513,11 +513,8 @@ export class AgentManager {
         } catch {}
     }
 
-    async chat(message: string, _history?: Array<{ role: string; content: string }>, systemPrompt?: string): Promise<{ text: string; history: Array<{ role: string; content: string }>; emotions?: string[] }> {
-        // Only update system prompt if caller explicitly passes a different one (rare — config changes)
-        if (systemPrompt && systemPrompt.length > 0) {
-            this.agent.setSystemPrompt([systemPrompt]);
-        }
+    async chat(message: string, _history?: Array<{ role: string; content: string }>, _systemPrompt?: string): Promise<{ text: string; history: Array<{ role: string; content: string }>; emotions?: string[] }> {
+        // System prompt already set once in createAgent() — don't override per-turn
 
         return new Promise<{ text: string; history: Array<{ role: string; content: string }>; emotions?: string[] }>((resolve, reject) => {
             let fullText = "";
@@ -551,8 +548,7 @@ export class AgentManager {
         });
     }
 
-    async chatStream(message: string, history?: Array<{ role: string; content: string }>, systemPrompt?: string, callbacks?: AgentCallbacks): Promise<void> {
-        if (systemPrompt) this.agent.setSystemPrompt([systemPrompt]);
+    async chatStream(message: string, history?: Array<{ role: string; content: string }>, _systemPrompt?: string, callbacks?: AgentCallbacks): Promise<void> {
         if (!callbacks) {
             await this.agent.prompt(message, { toolChoice: undefined });
             return;
