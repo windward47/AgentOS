@@ -79,9 +79,16 @@ let isPinned = true; // default from tauri.conf.json: alwaysOnTop=true
 document.addEventListener('wheel', (e) => { e.preventDefault(); currentScale += e.deltaY > 0 ? -0.02 : 0.02; currentScale = Math.max(0.06, Math.min(0.50, currentScale)); if (model) model.scale.set(currentScale); try { localStorage.setItem('avatar_scale', String(currentScale)); } catch {} }, { passive: false });
 
 // Tap motion definitions — which motion to play when a HitArea is clicked
+// HitArea IDs: Haru uses "HitArea" (head) / "HitArea2" (body)
+// Motion group "Idle" contains 20 motions (m01–m19 + idle)
 const TAP_MOTIONS: Record<string, { group: string; index: number }> = {
-  HitAreaHead: { group: "", index: 1 },
-  HitAreaBody: { group: "", index: 2 },
+  HitArea: { group: "Idle", index: -1 },   // Head → random idle motion
+  HitArea2: { group: "Idle", index: -1 },  // Body → random idle motion
+};
+// Fallback: if hitTest returns a name rather than ID
+const TAP_NAMES: Record<string, string> = {
+  Head: "HitArea",
+  Body: "HitArea2",
 };
 
 // Middle-mouse drag to reposition the model within the window
@@ -95,9 +102,17 @@ document.addEventListener('mousedown', (e) => {
     const sx = (e.clientX - rect.left) * (app.renderer.width / rect.width);
     const sy = (e.clientY - rect.top) * (app.renderer.height / rect.height);
     const hitArea = (model as any).hitTest?.(sx - model.x, sy - model.y);
-    if (hitArea && TAP_MOTIONS[hitArea]) {
-      const tm = TAP_MOTIONS[hitArea];
-      try { (model as any).motion?.(tm.group, tm.index); } catch {}
+    // Resolve hit area: try ID first, then name, then fallback
+    let resolved = hitArea ? (TAP_MOTIONS[hitArea] ? hitArea : TAP_NAMES[hitArea]) : null;
+    if (!resolved && hitArea) {
+      // Generic: any hit area triggers head motion
+      resolved = "HitArea";
+    }
+    console.log('[Haru] poke hitTest:', hitArea, '→ resolved:', resolved);
+    if (resolved && TAP_MOTIONS[resolved]) {
+      const tm = TAP_MOTIONS[resolved];
+      const index = tm.index < 0 ? Math.floor(Math.random() * 19) + 1 : tm.index;
+      try { (model as any).motion?.(tm.group, index); } catch { console.warn('[Haru] motion failed:', tm.group, index); }
       // Brief scale bounce for feedback
       const orig = currentScale;
       cancelAnimationFrame(pokeAnim);
