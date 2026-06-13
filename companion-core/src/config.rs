@@ -75,6 +75,10 @@ pub struct CompanionConfig {
     #[serde(default = "default_system_prompt")]
     pub custom_system_prompt: String,
 
+    /// Live2D model name (matches a .model3.json path under web/public/live2d/models/)
+    #[serde(default = "default_live2d_model")]
+    pub live2d_model: String,
+
     // ── Provider-specific overrides ──
     #[serde(default)]
     pub llm: ProviderConfig,
@@ -160,6 +164,7 @@ fn default_voice_mode() -> String { "ptt".into() }
 fn default_tts_voice() -> String { "茉莉".into() }
 fn default_tts_speed() -> f32 { 1.0 }
 fn default_user_name() -> String { "User".into() }
+fn default_live2d_model() -> String { "haru".into() }
 
 fn default_system_prompt() -> String {
     "You are Companion, a helpful desktop AI assistant. You have these tools: web_search (DuckDuckGo), web_fetch (read URLs), read (read files), write (create/edit files), search (grep text in files), find (find files by glob), bash (run commands). Use them when helpful. For current events or unknown facts, use web_search first. Never say you can't do something without trying a tool first.".into()
@@ -180,6 +185,7 @@ impl Default for CompanionConfig {
             tts_speed: default_tts_speed(),
             user_name: default_user_name(),
             custom_system_prompt: default_system_prompt(),
+            live2d_model: default_live2d_model(),
             default_api_key: String::new(),
             llm: ProviderConfig::default(),
             asr: ProviderConfig::default(),

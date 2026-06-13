@@ -42,6 +42,7 @@ export interface CompanionConfig {
   custom_system_prompt: string
   default_api_key: string
   api_token?: string  // legacy — maps to default_api_key via serde alias
+  live2d_model: string
   llm: ProviderConfig
   asr: ProviderConfig
   tts: ProviderConfig

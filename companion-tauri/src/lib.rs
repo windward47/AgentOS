@@ -90,6 +90,8 @@ pub fn run() {
             state::get_voice_state,
             state::get_cursor_pos,
             state::set_avatar_visible,
+            state::list_live2d_models,
+            state::set_live2d_model,
             state::get_avatar_visible,
             state::set_avatar_always_on_top,
             state::reset_avatar_position,

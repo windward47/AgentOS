@@ -4,6 +4,7 @@ import 'pixi-live2d-display/cubism4';
 
 const MODEL = '/live2d/models/haru/haru.model3.json';
 let app: PIXI.Application, model: Live2DModel | null = null;
+let currentModelPath = 'haru/haru.model3.json'; // track active model
 let mouthOpen = 0, currentScale = 0.12;
 const DEF_SCALE = 0.12;
 const DEF_X = 0.35, DEF_Y = 0.35; // default position (window fraction)
@@ -22,11 +23,15 @@ import('@tauri-apps/api/window').then(m => {
   gcwFn = m.getCurrentWindow;
   document.getElementById('drag-bar')?.addEventListener('mousedown', e => { if (e.button === 0) gcwFn()?.startDragging(); });
 }).catch(() => {});
-// Listen for "reset model" event from Settings page
+// Listen for "switch model" event from Settings page
 import('@tauri-apps/api/event').then(m => {
   m.listen('reset_model_position', () => {
     currentScale = DEF_SCALE;
     if (model) { model.x = app.renderer.width * DEF_X; model.y = app.renderer.height * DEF_Y; model.scale.set(currentScale); }
+  });
+  m.listen('switch_live2d_model', (event: any) => {
+    const path = event.payload as string;
+    if (path && path !== currentModelPath) loadModel(path);
   });
 }).catch(() => {});
 document.addEventListener('contextmenu', e => { e.preventDefault(); const c = document.getElementById('ctx-menu')!; c.style.left = Math.min(e.clientX, innerWidth - 110) + 'px'; c.style.top = Math.min(e.clientY, innerHeight - 50) + 'px'; c.style.display = 'block'; });
@@ -76,14 +81,32 @@ document.addEventListener('dblclick', () => {
   if (model) { model.x = app.renderer.width * DEF_X; model.y = app.renderer.height * DEF_Y; model.scale.set(currentScale); }
 });
 
+async function loadModel(path: string) {
+  if (model) { app.stage.removeChild(model as any); model = null; }
+  currentModelPath = path;
+  const url = '/live2d/models/' + path;
+  console.log('[Haru] Loading model:', url);
+  model = await Live2DModel.from(url, { autoUpdate: true, autoInteract: false });
+  model.anchor.set(0.5, 0.5);
+  model.x = app.renderer.width * 0.34; model.y = app.renderer.height * 0.34;
+  model.scale.set(currentScale);
+  app.stage.addChild(model as any);
+}
+
 async function init() {
   app = new PIXI.Application({ width: innerWidth, height: innerHeight, backgroundAlpha: 0, antialias: true, resolution: devicePixelRatio || 1, autoDensity: true });
   app.ticker.maxFPS = 30;
   document.getElementById('root')!.appendChild(app.view as HTMLCanvasElement);
   Live2DModel.registerTicker(PIXI.Ticker);
-  model = await Live2DModel.from(MODEL, { autoUpdate: true, autoInteract: false });
-  model.anchor.set(0.5, 0.5); model.x = app.renderer.width * 0.34; model.y = app.renderer.height * 0.34;
-  model.scale.set(currentScale); app.stage.addChild(model as any);
+
+  // Load saved model from config (wait for invoke to be available)
+  if (invokeFn) {
+    try {
+      const cfg = await invokeFn('get_config') as { live2d_model?: string };
+      if (cfg?.live2d_model) currentModelPath = cfg.live2d_model;
+    } catch {}
+  }
+  await loadModel(currentModelPath);
 
   let hooked = false;
   app.ticker.add(() => {

@@ -324,6 +324,47 @@ pub async fn get_voice_state(voice: tauri::State<'_, VoiceState>) -> Result<Stri
     Ok(s.into())
 }
 
+/// List available Live2D models from web/public/live2d/models/.
+#[tauri::command]
+pub async fn list_live2d_models() -> Result<Vec<String>, String> {
+    let base = std::env::current_dir().unwrap_or_default();
+    let root = if base.ends_with("companion-tauri") {
+        base.parent().unwrap_or(&base).to_path_buf()
+    } else {
+        base
+    };
+    let models_dir = root.join("web").join("public").join("live2d").join("models");
+    let mut models = Vec::new();
+    find_model3_json(&models_dir, &models_dir, &mut models);
+    models.sort();
+    Ok(models)
+}
+
+fn find_model3_json(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec<String>) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = path.file_name().unwrap_or_default().to_string_lossy();
+            if name.starts_with('.') || name == "node_modules" { continue; }
+            if path.is_dir() {
+                find_model3_json(&path, base, out);
+            } else if name.ends_with(".model3.json") {
+                if let Ok(rel) = path.strip_prefix(base) {
+                    out.push(rel.to_string_lossy().replace('\\', "/"));
+                }
+            }
+        }
+    }
+}
+
+/// Tell the avatar window to switch to a different model.
+#[tauri::command]
+pub async fn set_live2d_model(app: tauri::AppHandle, model_path: String) -> Result<(), String> {
+    app.emit("switch_live2d_model", model_path)
+        .map_err(|e| format!("emit: {e}"))?;
+    Ok(())
+}
+
 /// Show or hide the avatar (Live2D) window.
 #[tauri::command]
 pub async fn set_avatar_visible(app: tauri::AppHandle, visible: bool) -> Result<(), String> {

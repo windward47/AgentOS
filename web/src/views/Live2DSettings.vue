@@ -4,12 +4,17 @@ import { invoke } from '@tauri-apps/api/core'
 
 const avatarVisible = ref(true)
 const alwaysOnTop = ref(true)
-const avatarScale = ref(0.12)
+const selectedModel = ref('haru')
+const modelList = ref<string[]>([])
 
 onMounted(async () => {
+  try { avatarVisible.value = await invoke<boolean>('get_avatar_visible') } catch {}
   try {
-    const visible = await invoke<boolean>('get_avatar_visible')
-    avatarVisible.value = visible
+    const cfg = await invoke<{ live2d_model: string }>('get_config')
+    if (cfg.live2d_model) selectedModel.value = cfg.live2d_model
+  } catch {}
+  try {
+    modelList.value = await invoke<string[]>('list_live2d_models')
   } catch {}
 })
 
@@ -23,8 +28,28 @@ function toggleAlwaysOnTop() {
   invoke('set_avatar_always_on_top', { onTop: alwaysOnTop.value }).catch(() => {})
 }
 
+function switchModel(path: string) {
+  selectedModel.value = path
+  // Save to config
+  invoke<any>('get_config').then(cfg => {
+    cfg.live2d_model = path
+    invoke('update_config', { newConfig: cfg }).catch(() => {})
+  }).catch(() => {})
+  // Tell avatar window to reload
+  invoke('set_live2d_model', { modelPath: path }).catch(() => {})
+}
+
 function resetAvatar() {
   invoke('reset_avatar_position').catch(() => {})
+}
+
+function modelLabel(path: string) {
+  // Extract readable name: "haru/haru.model3.json" → "Haru"
+  const parts = path.split('/')
+  const name = parts[parts.length - 1].replace('.model3.json', '')
+  const dir = parts.length > 1 ? parts[parts.length - 2] : ''
+  // Capitalize first letter
+  return (dir || name).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 </script>
 
@@ -33,6 +58,16 @@ function resetAvatar() {
     <h1 class="text-lg font-semibold text-gray-900 mb-6">Live2D Settings</h1>
 
     <div class="space-y-6">
+      <!-- Model selection -->
+      <div class="bg-white rounded-xl border border-gray-200 p-5">
+        <h2 class="text-sm font-semibold text-gray-900 mb-3">Character Model</h2>
+        <select v-model="selectedModel" @change="switchModel(selectedModel)"
+          class="block w-full rounded-lg border border-gray-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none">
+          <option v-for="m in modelList" :key="m" :value="m">{{ modelLabel(m) }}</option>
+        </select>
+        <p class="text-xs text-gray-400 mt-2">{{ modelList.length }} models found</p>
+      </div>
+
       <!-- Avatar toggle -->
       <div class="bg-white rounded-xl border border-gray-200 p-5">
         <div class="flex items-center justify-between">
