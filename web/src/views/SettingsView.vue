@@ -25,7 +25,7 @@ onMounted(async () => {
     global_voice: {
       record_hotkey: 'Alt+`', tts_hotkey: 'Alt+T',
       inject_mode_switch_hotkey: 'Alt+Shift+V', engine_switch_hotkey: 'Alt+Shift+E',
-      inject_mode: 'keyboard', asr_engine: 'mimo', tts_engine: 'mimo-tts',
+      inject_mode: 'keyboard', asr_engine: 'mimo', tts_engine: 'mimo-tts', tts_voice: '茉莉', tts_speed: 1.0,
     },
   }
   try { config.value = await getConfig() } catch {}
@@ -262,6 +262,14 @@ function onProviderChange(kind: 'llm' | 'asr' | 'tts') {
         <div class="p-5 grid grid-cols-2 gap-4">
           <div><label class="block text-[11px] font-medium text-gray-600 mb-1">Record (ASR)</label><input v-model="config.global_voice.record_hotkey" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" placeholder="Alt+`" /></div>
           <div><label class="block text-[11px] font-medium text-gray-600 mb-1">TTS Selected</label><input v-model="config.global_voice.tts_hotkey" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" placeholder="Alt+T" /></div>
+          <div><label class="block text-[11px] font-medium text-gray-600 mb-1">TTS Voice</label>
+            <select v-model="config.global_voice.tts_voice" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
+              <option v-for="v in (TTS_VOICES['xiaomi'] || [])" :key="v" :value="v">{{ v }}</option>
+            </select>
+          </div>
+          <div><label class="block text-[11px] font-medium text-gray-600 mb-1">TTS Speed — {{ config.global_voice.tts_speed?.toFixed(1) || '1.0' }}</label>
+            <input v-model.number="config.global_voice.tts_speed" type="range" min="0.5" max="2.0" step="0.1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500" />
+          </div>
           <div><label class="block text-[11px] font-medium text-gray-600 mb-1">Switch Inject</label><input v-model="config.global_voice.inject_mode_switch_hotkey" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" placeholder="Alt+Shift+V" /></div>
           <div><label class="block text-[11px] font-medium text-gray-600 mb-1">Switch ASR Engine</label><input v-model="config.global_voice.engine_switch_hotkey" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" placeholder="Alt+Shift+E" /></div>
         </div>

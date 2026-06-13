@@ -129,8 +129,8 @@ pub async fn handle_voice_command(
                 return;
             }
 
-            let voice = cfg_guard.tts_voice.clone();
-            let speed = cfg_guard.tts_speed;
+            let voice = cfg_guard.global_voice.tts_voice.clone();
+            let speed = cfg_guard.global_voice.tts_speed;
             drop(cfg_guard);
 
             // Alt+T always uses Xiaomi cloud (global hotkey path)
