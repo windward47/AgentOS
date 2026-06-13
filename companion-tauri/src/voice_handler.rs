@@ -93,10 +93,11 @@ pub async fn handle_voice_command(
             let companion_focused = app.get_webview_window("main")
                 .map(|w| w.is_focused().unwrap_or(false))
                 .unwrap_or(false);
+            log::info!("[GlobalVoice] companion_focused={companion_focused}, emitting event");
 
             if companion_focused {
-                // Send to chat input via event — no keyboard injection needed
                 let _ = app.emit("voice_asr_result", serde_json::json!({ "text": &text }));
+                log::info!("[GlobalVoice] event emitted");
             } else {
                 // Inject into whichever app has focus
                 let mode = *inject_mode.lock().unwrap();

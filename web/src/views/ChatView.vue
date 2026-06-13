@@ -415,7 +415,7 @@ import('@tauri-apps/api/event').then(m => {
   m.listen<{ text: string }>('voice_asr_result', (evt) => {
     input.value = evt.payload.text
   })
-}).catch(() => {})
+}).catch((e) => { console.error('[ChatView] event listen failed:', e) })
 
 // ── Chat ──
 async function send() {
