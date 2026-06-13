@@ -161,9 +161,9 @@ export async function synthesizeLocal(text: string, voice: string): Promise<numb
     const resp = await fetch("http://localhost:50000/v1/audio/speech", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "cosyvoice2", input: text, voice }),
+        body: JSON.stringify({ model: "edge-tts", input: text, voice }),
     });
-    if (!resp.ok) throw new Error(`CosyVoice HTTP ${resp.status}`);
-    const buf = Buffer.from(await resp.arrayBuffer());
-    return Array.from(parseWavToF32(buf));
+    if (!resp.ok) throw new Error(`TTS HTTP ${resp.status}`);
+    const buf = new Float32Array(await resp.arrayBuffer());
+    return Array.from(buf);
 }
