@@ -79,14 +79,5 @@ services/*
 
 # Playwright CLI output
 .playwright-cli/
-web/public/live2d/models/Epsilon/
-web/public/live2d/models/haru_greeter_pro_jp/
-web/public/live2d/models/hiyori_pro_zh/
-web/public/live2d/models/hiyori_movie_pro_zh/
-web/public/live2d/models/kei_zh/
-web/public/live2d/models/mao_pro_zh/
-web/public/live2d/models/miara_pro_en/
-web/public/live2d/models/miku_pro_jp/
-web/public/live2d/models/natori_pro_zh/
-web/public/live2d/models/ren_pro_zh/
-web/public/live2d/models/rice_pro_zh/
+
+web/node_modules
