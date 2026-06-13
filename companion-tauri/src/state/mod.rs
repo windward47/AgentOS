@@ -8,6 +8,7 @@ use companion_core::agent::{AgentEngine, ConversationMessage, MessageRole, provi
 use companion_core::asr::AsrProvider;
 use companion_core::tts::TtsProvider;
 use companion_core::config::{CompanionConfig, ConfigManager};
+use companion_core::downloader::{download_model, DownloadProgress};
 use companion_core::permissions::audit::{AuditEvent, AuditLogger};
 use companion_core::tools::ToolRegistry;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -400,6 +401,38 @@ fn scan_models(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec<Stri
 pub async fn set_live2d_model(app: tauri::AppHandle, model_path: String) -> Result<(), String> {
     app.emit("switch_live2d_model", model_path)
         .map_err(|e| format!("emit: {e}"))?;
+    Ok(())
+}
+
+/// Download a Live2D model zip from a URL and extract to ~/.companion/models/.
+/// Emits `download_progress` events: { phase: "downloading"|"extracting"|"done"|"error", ... }
+#[tauri::command]
+pub async fn cmd_download_model(
+    app: tauri::AppHandle,
+    url: String,
+    model_id: String,
+) -> Result<(), String> {
+    let home = dirs::home_dir().unwrap_or_default();
+    let dest = home.join(".companion").join("models");
+    std::fs::create_dir_all(&dest).map_err(|e| format!("mkdir models: {e}"))?;
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<DownloadProgress>(32);
+    let app_clone = app.clone();
+
+    // Spawn download on a background task
+    tokio::spawn(async move {
+        if let Err(e) = download_model(&url, &model_id, &dest, tx).await {
+            let _ = app_clone.emit("download_progress", DownloadProgress::Error { message: e });
+        }
+    });
+
+    // Forward progress events to the frontend
+    tokio::spawn(async move {
+        while let Some(evt) = rx.recv().await {
+            let _ = app.emit("download_progress", &evt);
+        }
+    });
+
     Ok(())
 }
 

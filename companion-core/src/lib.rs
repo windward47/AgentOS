@@ -8,6 +8,7 @@ pub mod asr;
 pub mod audio;
 pub mod config;
 pub mod capture_mgr;
+pub mod downloader;
 pub mod emotion;
 pub mod hotkey;
 pub mod inject;

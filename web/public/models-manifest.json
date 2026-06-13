@@ -1,0 +1,58 @@
+[
+  {
+    "id": "hiyori_pro_zh",
+    "name": "Hiyori Pro (中文)",
+    "description": "活泼少女风格，中文语音支持",
+    "size": "33 MB",
+    "thumbnail": "",
+    "url": "https://github.com/windward47/AgentOS/releases/download/models/hiyori_pro_zh.zip"
+  },
+  {
+    "id": "hiyori_movie_pro_zh",
+    "name": "Hiyori Movie Pro (中文)",
+    "description": "影视版 Hiyori，表情更丰富",
+    "size": "18 MB",
+    "thumbnail": "",
+    "url": "https://github.com/windward47/AgentOS/releases/download/models/hiyori_movie_pro_zh.zip"
+  },
+  {
+    "id": "miara_pro_en",
+    "name": "Miara Pro (English)",
+    "description": "Cool beauty style, English voice support",
+    "size": "40 MB",
+    "thumbnail": "",
+    "url": "https://github.com/windward47/AgentOS/releases/download/models/miara_pro_en.zip"
+  },
+  {
+    "id": "natori_pro_zh",
+    "name": "Natori Pro (中文)",
+    "description": "温柔大姐姐风格",
+    "size": "27 MB",
+    "thumbnail": "",
+    "url": "https://github.com/windward47/AgentOS/releases/download/models/natori_pro_zh.zip"
+  },
+  {
+    "id": "rice_pro_zh",
+    "name": "Rice Pro (中文)",
+    "description": "可爱萌系风格",
+    "size": "14 MB",
+    "thumbnail": "",
+    "url": "https://github.com/windward47/AgentOS/releases/download/models/rice_pro_zh.zip"
+  },
+  {
+    "id": "mao_pro_zh",
+    "name": "Mao Pro (中文)",
+    "description": "猫耳兽娘风格",
+    "size": "77 MB",
+    "thumbnail": "",
+    "url": "https://github.com/windward47/AgentOS/releases/download/models/mao_pro_zh.zip"
+  },
+  {
+    "id": "kei_zh",
+    "name": "Kei (中文)",
+    "description": "少年风格，清爽干练",
+    "size": "32 MB",
+    "thumbnail": "",
+    "url": "https://github.com/windward47/AgentOS/releases/download/models/kei_zh.zip"
+  }
+]
