@@ -93,7 +93,6 @@ const TAP_NAMES: Record<string, string> = {
 
 // Middle-mouse drag to reposition the model within the window
 let dragModel = false, dragMx = 0, dragMy = 0, dragOx = 0, dragOy = 0;
-let pokeAnim = 0; // scale bounce animation frame
 document.addEventListener('mousedown', (e) => {
   if (e.button === 1) { e.preventDefault(); dragModel = true; dragMx = e.clientX; dragMy = e.clientY; dragOx = model?.x ?? 0; dragOy = model?.y ?? 0; return; }
   // Left click: poke/tap interaction
@@ -101,29 +100,20 @@ document.addEventListener('mousedown', (e) => {
     const rect = (app.view as HTMLCanvasElement).getBoundingClientRect();
     const sx = (e.clientX - rect.left) * (app.renderer.width / rect.width);
     const sy = (e.clientY - rect.top) * (app.renderer.height / rect.height);
-    const hitArea = (model as any).hitTest?.(sx - model.x, sy - model.y);
-    // Resolve hit area: try ID first, then name, then fallback
-    let resolved = hitArea ? (TAP_MOTIONS[hitArea] ? hitArea : TAP_NAMES[hitArea]) : null;
-    if (!resolved && hitArea) {
-      // Generic: any hit area triggers head motion
-      resolved = "HitArea";
-    }
-    console.log('[Haru] poke hitTest:', hitArea, '→ resolved:', resolved);
-    if (resolved && TAP_MOTIONS[resolved]) {
+    const raw = (model as any).hitTest?.(sx - model.x, sy - model.y);
+    const hitName = Array.isArray(raw) ? raw[0] : raw; // pixi-live2d-display returns array
+    // Resolve: try ID first, then name fallback
+    let resolved = hitName ? (TAP_MOTIONS[hitName] ? hitName : TAP_NAMES[hitName]) : null;
+    if (!resolved) return; // miss → no-op
+    console.log('[Haru] poke:', hitName, '→', resolved);
+    if (TAP_MOTIONS[resolved]) {
       const tm = TAP_MOTIONS[resolved];
       const index = tm.index < 0 ? Math.floor(Math.random() * 19) + 1 : tm.index;
-      try { (model as any).motion?.(tm.group, index); } catch { console.warn('[Haru] motion failed:', tm.group, index); }
-      // Brief scale bounce for feedback
+      try { (model as any).motion?.(tm.group, index); } catch {}
+      // One-shot scale pop (not looping)
       const orig = currentScale;
-      cancelAnimationFrame(pokeAnim);
-      const bounce = () => {
-        const t = performance.now() % 300 / 300;
-        const s = orig + Math.sin(t * Math.PI) * 0.03;
-        model!.scale.set(s);
-        if (t < 0.99) pokeAnim = requestAnimationFrame(bounce);
-        else model!.scale.set(orig);
-      };
-      pokeAnim = requestAnimationFrame(bounce);
+      model.scale.set(orig + 0.04);
+      setTimeout(() => model?.scale.set(orig), 150);
     }
   }
 });
