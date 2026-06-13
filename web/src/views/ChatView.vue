@@ -49,7 +49,7 @@ const ttsAuto = ref(true)
 const ttsVoice = ref('茉莉')
 const ttsSpeed = ref(1.0)
 const voiceMode = ref<'ptt' | 'auto'>('ptt')
-const voices = ['mimo_default', '冰糖', '茉莉', '苏打', '白桦', 'Mia', 'Chloe', 'Milo', 'Dean']
+const voices = ['mimo_default', '冰糖', '茉莉', '苏打', '白桦', 'Mia', 'Chloe', 'Milo', 'Dean', 'zh-CN-XiaoxiaoNeural', 'zh-CN-YunxiNeural', 'zh-CN-YunjianNeural', 'zh-CN-XiaoyiNeural']
 
 // ── Toast notifications ──
 const toast = ref('')

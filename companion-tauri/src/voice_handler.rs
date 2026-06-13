@@ -129,12 +129,17 @@ pub async fn handle_voice_command(
                 return;
             }
 
-            let tts = XiaomiTts::new(&api_token, "茉莉");
+            let voice = cfg_guard.tts_voice.clone();
+            let speed = cfg_guard.tts_speed;
+            drop(cfg_guard);
+
+            let tts = XiaomiTts::new(&api_token, &voice);
             match tts.synthesize(&text).await {
                 Ok(pcm_f32) => {
                     log::info!("[GlobalVoice] TTS synthesized {} f32 samples", pcm_f32.len());
                     app.state::<VoiceState>().is_speaking.store(true, Ordering::Release);
-                    animate_lip_sync(&pcm_f32, 24000, app);
+                    let sample_rate = (24000.0 * speed) as u32;
+                    animate_lip_sync(&pcm_f32, sample_rate, app);
 
                     let i16 = f32_to_i16(&pcm_f32);
                     match pcm_i16_to_wav(&i16, 24000) {
