@@ -260,6 +260,13 @@ function startHotkeyCapture() {
     const p = parseHotkey(e)
     if (p) {
       e.preventDefault()
+      // Block conflicting global hotkeys
+      if (p === 'Alt+`' || p === 'Alt+T') {
+        hotkey.value = original; shortcutDisplay.value = original
+        showToast('Alt+` and Alt+T are reserved for system-wide ASR/TTS')
+        document.removeEventListener('keydown', handler)
+        return
+      }
       savedHotkey = p
       hotkey.value = p
       shortcutDisplay.value = p
