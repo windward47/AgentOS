@@ -428,7 +428,7 @@ import('@tauri-apps/api/event').then(m => {
   })
   // Alt+` global hotkey: insert ASR result into chat input
   m.listen<{ text: string }>('voice_asr_result', (evt) => {
-    input.value = evt.payload.text
+    if (document.hasFocus()) input.value = evt.payload.text
   })
 }).catch((e) => { console.error('[ChatView] event listen failed:', e) })
 
