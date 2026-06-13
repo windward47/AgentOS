@@ -54,8 +54,11 @@ Companion 专注于语音交互体验和虚拟形象呈现。
 | Sprint 2.1 | 实时打断 (bg VAD → stop TTS → ASR → auto-send) | ✅ |
 | Sprint 2.2-2.5 | 全局语音热键 ASR/TTS (Alt+\` / Alt+T) + 系统托盘 + Live2D animation | ✅ |
 | **重构 R1** | **Cargo workspace + Domain State 拆分 + 死代码清理** | ✅ **已完成** |
+| **增强 R2** | **Agent 工具系统 + Live2D 模型切换 + Settings 重构 + Markdown/TTS** | ✅ **已完成** |
 | 阶段三 | 情绪识别 + 风格系统 + MCP 插件 + 社区商店 | 📋 待开始 |
 | 阶段四 | VR 模式 + 跨平台打包 + 性能优化 | 📋 待开始 |
+
+> **当前版本 v0.0.1** — 对话、语音、Live2D、浏览器截图、Agent 工具（web_search / read / write / search / find / bash）均可用。配置文件 `~/.companion/config.json`。
 
 ## 项目结构
 

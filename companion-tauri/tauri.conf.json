@@ -1,7 +1,7 @@
 {
   "$schema": "../web/node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Companion",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "identifier": "com.companion.app",
   "build": {
     "frontendDist": "../web/dist",

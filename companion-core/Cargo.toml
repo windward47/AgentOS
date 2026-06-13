@@ -1,6 +1,6 @@
 [package]
 name = "companion-core"
-version = "0.1.0"
+version = "0.0.1"
 description = "Companion — cross-platform modular desktop agent core library"
 authors = ["Companion Contributors"]
 license = "MIT"

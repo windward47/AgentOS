@@ -254,6 +254,7 @@ Live2D 不应该和聊天 UI 挤在同一个 Vue 组件里。正确做法：
 | 2.4 | ✅ | Audit logging + system mode switch |
 | **2.5** | **✅** | **Global voice hotkey system (Alt+` ASR, Alt+T TTS) + system tray menu + Live2D animation** |
 | **R1** | **✅** | **Codebase refactoring: Cargo workspace + domain states + dead code cleanup** |
+| **S2** | **✅** | **Agent tools (web_search/web_fetch/read/write/search/find/bash) + Live2D model switching + Settings redesign** |
 | 3.x | 📋 | Emotion recognition + style system + MCP plugins + community store |
 | 4.x | 📋 | VR mode + cross-platform packaging + performance |
 

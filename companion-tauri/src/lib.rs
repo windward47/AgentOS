@@ -121,6 +121,7 @@ pub fn run() {
                     main_win.outer_size().unwrap().width as i32 + 100,
                     100,
                 ));
+                #[cfg(debug_assertions)]
                 avatar.open_devtools();
             }
 
