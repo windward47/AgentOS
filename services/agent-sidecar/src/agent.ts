@@ -407,11 +407,19 @@ export class AgentManager {
     }
 
     private createAgent(): Agent {
+        // Build full system prompt once at creation — includes all guidance
         const sp = this.companionConfig.custom_system_prompt
             || "Companion — a helpful desktop AI assistant.";
+        const fullPrompt = [
+            sp,
+            emotionPromptFragment(),
+            `You can also wrap inner thoughts in <think>...</think> tags — they'll be shown but not spoken.`,
+            SPEAKABLE_PROMPT,
+            TOOL_GUIDANCE_PROMPT,
+        ].join("\n\n");
         const agent = new Agent({
             initialState: {
-                systemPrompt: [sp],
+                systemPrompt: [fullPrompt],
                 model: this.model as any,
             },
             getApiKey: () => this.apiKey,
@@ -506,13 +514,10 @@ export class AgentManager {
     }
 
     async chat(message: string, _history?: Array<{ role: string; content: string }>, systemPrompt?: string): Promise<{ text: string; history: Array<{ role: string; content: string }>; emotions?: string[] }> {
-        // Inject emotion + think-tag + speakable + tool guidance into system prompt
-        const emotionPrompt = emotionPromptFragment();
-        const thinkPrompt = " You can also wrap inner thoughts in <think>...</think> tags — they'll be shown but not spoken.";
-        const base = systemPrompt
-            ? `${systemPrompt}\n\n${emotionPrompt}${thinkPrompt}\n\n${SPEAKABLE_PROMPT}\n\n${TOOL_GUIDANCE_PROMPT}`
-            : `${emotionPrompt}${thinkPrompt}\n\n${SPEAKABLE_PROMPT}\n\n${TOOL_GUIDANCE_PROMPT}`;
-        this.agent.setSystemPrompt([base]);
+        // Only update system prompt if caller explicitly passes a different one (rare — config changes)
+        if (systemPrompt && systemPrompt.length > 0) {
+            this.agent.setSystemPrompt([systemPrompt]);
+        }
 
         return new Promise<{ text: string; history: Array<{ role: string; content: string }>; emotions?: string[] }>((resolve, reject) => {
             let fullText = "";
