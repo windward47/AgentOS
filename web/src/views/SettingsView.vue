@@ -155,7 +155,7 @@ function onProviderChange(kind: 'llm' | 'asr' | 'tts') {
             <label class="block text-sm font-medium text-gray-700 mb-1.5">TTS Provider</label>
             <select v-model="config.tts_provider" @change="onProviderChange('tts')" class="block w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors">
               <option value="xiaomi">Xiaomi</option>
-              <option value="local_cosyvoice">Local edge-tts</option>
+              <option value="local_cosyvoice">Microsoft Edge (free)</option>
               <option value="custom">Custom…</option>
             </select>
           </div>
