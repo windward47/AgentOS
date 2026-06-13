@@ -839,55 +839,73 @@ services/agent-sidecar/ (Bun)
 
 ---
 
-## 阶段 B1：Sidecar 成为真正的 Agent Core（计划中 📋）
+## 阶段 B1：Sidecar 成为真正的 Agent Core（已完成 ✅）
 
 > 目标：修正架构偏差，让 Rust 层做纯粹的桌面壳，Bun sidecar 接管所有 Agent 逻辑。
-> 这是进入 Phase 3 社区扩展之前的必要重构。
 
-### B1a — 配置归一侧
+### B1a — 配置归一侧 ✅
 
 - Sidecar 启动时读取并缓存 `~/.companion/config.json`
-- Rust 删除 `ConfigState` → 改为启动时从 sidecar `get_config` RPC 拉配置
-- `update_config`：前端 → Rust → sidecar RPC → sidecar 写磁盘
-- 删除 `config.rs` 中 provider 路由逻辑（移到 sidecar）
-- **结果：** 配置只有一个来源、一个写入者
+- `get_config` / `update_config` RPC：Sidecar 是配置的唯一写入者
+- Rust `ConfigState` 保留为本地缓存，`sync_from_sidecar()` 在 spawn 后同步
+- `update_config` IPC 推送到 Sidecar → Sidecar 写磁盘 → 返回合并结果 → Rust 更新缓存
 
-### B1b — 历史归一侧
+### B1b — 历史归一侧 ✅
 
-- Sidecar `chat` RPC 返回时附带 `history: ConversationMessage[]`
-- Rust 删除 `AgentState.history`
-- `get_history` / `clear_history` → Rust 转发到 sidecar
-- **结果：** 对话状态完全由 pi-agent-core 管理
+- `AgentManager.messageHistory`：Sidecar 管理完整对话历史
+- `chat()` 返回 `{ text, history }`，每次对话带回完整历史
+- Rust 删除 `AgentState.history`，`get_history` / `clear_history` 纯转发
+- 50 条截断在 Sidecar 端执行
 
-### B1c — 工具归一侧
+### B1c — 工具归一侧 ✅
 
-- 删除 Rust 端 `tools/`、`mcp/`、`sandbox/`、`permissions/`
-- Sidecar 工具启动时自动注册，加入路径沙箱
-- 危险命令常量从 `permissions/mod.rs` 移到 sidecar
-- **结果：** 工具层是 sidecar 内部事务
+- 删除 Rust `tools/`、`mcp/`、`sandbox/`、`permissions/`（4 模块，~850 行）
+- `sandbox.ts`：路径沙箱 + 审计日志 + 危险命令过滤
+- `makeSandboxTools()`：5 个 sandbox_* 工具在 `createAgent()` 时自动注册
+- 删除 `ToolState`、`AuditState`、`chat_with_tools`
+- `lib.rs`：13 → 9 pub mod
 
-### B1d — 事件总线
+### B1d — 事件总线 + ASR/TTS 迁入 ✅
 
-- `invoke('agent_action', { type, payload })` — 前端 → Rust → sidecar
-- `listen('agent_event', ...)` — sidecar → Rust → 前端
-- 前端从"调命令"变为"发事件+收事件"
-- **结果：** 表达层不知 LLM/工具的存在
+- Sidecar `agent_action` RPC：统一路由（chat/get_config/transcribe/synthesize 等）
+- ASR/TTS 从 Rust 直接 HTTP 迁到 Sidecar（`audio.ts`：WAV 编解码 + Xiaomi HTTP）
+- Rust `transcribe_audio` / `synthesize_audio` IPC → Sidecar RPC 转发
+- 前端 `useCompanion.sendAction(type, payload)` 统一入口
+- ASR/TTS Rust trait 保留给 `voice_handler.rs`（全局热键不走前端 IPC）
 
-### B1 完成后结构
+### B1 完成后架构
 
 ```
-Rust (Tauri)           ← 真·桌面壳 (~400 行)
-  ├─ 窗口/托盘/热键/麦克风
-  └─ JSON-RPC 桥接 → sidecar
+companion-core/ (9 modules)
+├─ agent/        ← OmpAgentSidecar + AgentEngine trait（纯 RPC 客户端）
+├─ asr/          ← AsrProvider trait（voice_handler 使用）
+├─ audio/        ← utils.rs
+├─ capture_mgr/  ← cpal 麦克风捕获
+├─ config.rs     ← CompanionConfig + 工具函数
+├─ downloader.rs ← Live2D 模型下载器
+├─ hotkey/       ← rdev 全局热键
+├─ inject/       ← 键盘/剪贴板/文本读取
+└─ tts/          ← TtsProvider trait（voice_handler 使用）
 
-Bun Sidecar            ← 真·Agent Core
-  ├─ 配置/历史/LLM/工具
-  └─ 事件广播
+services/agent-sidecar/ (Bun — Agent Core)
+├─ index.ts      ← JSON-RPC: chat/get_config/transcribe/synthesize/agent_action...
+├─ agent.ts      ← pi-agent-core Agent + 12 工具自注册 + 历史管理
+├─ config.ts     ← CompanionConfig 加载/持久化（唯一配置源）
+├─ audio.ts      ← ASR/TTS: WAV ↔ PCM f32 + Xiaomi HTTP
+├─ sandbox.ts    ← 路径沙箱 + 审计日志 + 危险命令过滤
+└─ protocol.ts   ← JSON-RPC 编解码
 
-Vue 前端              ← 纯表达层
-  ├─ 收发 agent_action/agent_event
-  └─ 不知 chat/transcribe
+companion-tauri/ (Tauri 桌面壳 — 纯转发)
+├─ lib.rs        ← Tauri Builder (~80 行)
+├─ main.rs       ← 入口
+├─ state/mod.rs  ← IPC 命令（全部转发到 Sidecar）
+└─ voice_handler.rs ← 全局语音热键（直接使用 Rust ASR/TTS trait）
 ```
+
+**关键成果：**
+- 配置、历史、工具、ASR/TTS 全部由 Sidecar 管理
+- Rust 从 16 模块 → 9 模块，从 ~2500 行业务逻辑 → ~600 行转发代码
+- 表达层通过 `agent_action` 统一入口与 Agent 交互
 
 ---
 
@@ -1304,7 +1322,9 @@ cargo tauri build --bundler appimage,deb
 | **M4** | Week 4~5 | 实时打断 + 全局语音热键 | TTS 播放时说话立即停止 | ✅ |
 | **M5** | Week 5~6 | 浏览器控制 + 系统模式 | Agent 打开网页并截图 | ✅ |
 | **R1** | Week 6~7 | Cargo workspace + Domain State 重构 + 死代码清理 | `cargo check` + 全部测试通过 | ✅ |
-| **M6** | Week 7~9 | 情绪识别 + 风格系统 + MCP 加载器 | 情绪驱动回复风格 | 📋 |
+| **R2** | Week 7~8 | A/A+ 死代码清理 + 架构审计 | 零警告，18/18 测试 | ✅ |
+| **B1** | Week 8~10 | Sidecar 成为 Agent Core（配置/历史/工具/ASR/TTS/事件总线） | 14/14 测试，前端构建通过 | ✅ |
+| **M6** | Week 10~12 | 情绪识别 + 风格系统 + MCP 加载器 | 情绪驱动回复风格 | 📋 |
 | **M7** | Week 8~9 | 社区商店雏形 | 安装/卸载社区工具 | 📋 |
 | **M8** | Week 9~11 | VR 模式原型 | Godot 显示 VRM 并连接后端 | 📋 |
 | **M9** | Week 11~12 | 跨平台打包 + 性能优化 | 安装包可分发安装 | 📋 |

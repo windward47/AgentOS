@@ -92,25 +92,32 @@ web/src/
 Local and cloud implementations live in sibling files. Runtime switching via config.
 All logic code lives in `companion-core`; Tauri-specific glue code lives in `companion-tauri`.
 
-## IPC Commands (Tauri → Rust)
+## IPC Commands (Tauri → Rust → Sidecar)
 
-| Command | Args | Returns |
-|---------|------|---------|
-| `chat` | `message: string` | `string` |
-| `chat_with_tools` | `message: string` | `string` |
-| `get_history` | — | `Vec<ConversationMessage>` |
-| `clear_history` | — | `()` |
-| `transcribe_audio` | `audio: Vec<f32>` (16kHz mono PCM) | `string` |
-| `synthesize_audio` | `text: string, voice?: string` | `Vec<f32>` (PCM f32 mono) |
-| `get_config` | — | `CompanionConfig` |
-| `update_config` | `new_config: CompanionConfig` | `()` |
-| `set_lip_level` | `level: f32` (0-1) | `()` |
-| `get_lip_level` | — | `f32` |
-| `get_voice_state` | — | `"idle"\|"listening"\|"speaking"` |
-| `get_cursor_pos` | — | `[i32, i32]` |
-| `browse_screenshot` | `url: string` | `string` (base64 PNG) |
-| `get_audit_log` | — | `string` |
-| `list_models` | `base_url: string, api_key: string` | `string[]` |
+| Command | Args | Returns | Handler |
+|---------|------|---------|---------|
+| `chat` | `message: string` | `string` | Sidecar |
+| `agent_action` | `actionType: string, payload: Value` | `Value` | Sidecar (unified) |
+| `get_history` | — | `Vec<ConversationMessage>` | Sidecar |
+| `clear_history` | — | `()` | Sidecar |
+| `transcribe_audio` | `audio: Vec<f32>` (16kHz mono PCM) | `string` | Sidecar |
+| `synthesize_audio` | `text: string, voice?: string` | `Vec<f32>` (PCM f32 mono) | Sidecar |
+| `get_config` | — | `CompanionConfig` | Rust cache |
+| `update_config` | `new_config: CompanionConfig` | `()` | Sidecar (writes disk) |
+| `set_lip_level` | `level: f32` (0-1) | `()` | Rust |
+| `get_lip_level` | — | `f32` | Rust |
+| `get_voice_state` | — | `"idle"\|"listening"\|"speaking"` | Rust |
+| `get_cursor_pos` | — | `[i32, i32]` | Rust |
+| `browse_screenshot` | `url: string` | `string` (base64 PNG) | Rust |
+| `get_audit_log` | — | `string` | Rust (reads sidecar log) |
+| `list_models` | `base_url: string, api_key: string` | `string[]` | Rust |
+| `list_live2d_models` | — | `string[]` | Rust |
+| `cmd_download_model` | `url: string, modelId: string` | `()` | Rust |
+| `set_live2d_model` | `modelPath: string` | `()` | Rust (emits event) |
+| `set_avatar_visible` | `visible: boolean` | `()` | Rust |
+| `get_avatar_visible` | — | `boolean` | Rust |
+| `set_avatar_always_on_top` | `onTop: boolean` | `()` | Rust |
+| `reset_avatar_position` | — | `()` | Rust |
 
 ## Conventions
 
@@ -248,13 +255,15 @@ Live2D 不应该和聊天 UI 挤在同一个 Vue 组件里。正确做法：
 | 1.4 | ✅ | Live2D: PixiJS + Cubism4 CDN + transparent window + lip-sync + eye tracking + scroll zoom |
 | 1.5 | ✅ | omp config (Windows .cmd, SiliconFlow) |
 | 1.6 | ✅ | Settings UI + model/tool bridges to omp |
-| **2.1** | **✅** | **Interrupt: bg VAD → stop TTS → ASR → auto-send** |
-| 2.2 | ✅ | Global voice hotkey ASR/TTS with Xiaomi API (replaced ChatTTS) |
+| 2.1 | ✅ | Interrupt: bg VAD → stop TTS → ASR → auto-send |
+| 2.2 | ✅ | Global voice hotkey ASR/TTS with Xiaomi API |
 | 2.3 | ✅ | Browser screenshot (Playwright headless Chrome) |
 | 2.4 | ✅ | Audit logging + system mode switch |
-| **2.5** | **✅** | **Global voice hotkey system (Alt+` ASR, Alt+T TTS) + system tray menu + Live2D animation** |
-| **R1** | **✅** | **Codebase refactoring: Cargo workspace + domain states + dead code cleanup** |
-| **S2** | **✅** | **Agent tools (web_search/web_fetch/read/write/search/find/bash) + Live2D model switching + Settings redesign** |
+| 2.5 | ✅ | Global voice hotkey system + system tray + Live2D animation |
+| R1 | ✅ | Cargo workspace + domain states + dead code cleanup |
+| R2 | ✅ | A/A+ dead code purge (~850 lines) + architecture audit |
+| S2 | ✅ | Agent tools (web_search/web_fetch/read/write/search/find/bash) + Live2D model switching + model store |
+| **B1** | **✅** | **Architecture: Sidecar becomes Agent Core (config/history/tools/ASR/TTS/event bus). Rust 16→9 modules, ~2000→~600 lines** |
 | 3.x | 📋 | Emotion recognition + style system + MCP plugins + community store |
 | 4.x | 📋 | VR mode + cross-platform packaging + performance |
 
