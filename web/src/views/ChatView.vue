@@ -337,18 +337,27 @@ async function playTTS(text: string, msgIdx: number) {
       ttsSource.playbackRate.value = ttsSpeed.value
       ttsSource.connect(audioCtx.destination)
 
-      // Start lip sync BEFORE playback, using real AudioContext time
-      const startTime = audioCtx.currentTime
+      // Precompute VU volumes: one RMS value per 20ms chunk (= 320 samples @ 16kHz)
+      const chunkSamples = 320;
+      const volumes: number[] = [];
+      for (let i = 0; i < pcm!.length; i += chunkSamples) {
+        let sum = 0, n = 0;
+        for (let j = i; j < Math.min(i + chunkSamples, pcm!.length); j++, n++) sum += pcm![j] * pcm![j];
+        volumes.push(Math.sqrt(sum / (n || 1)));
+      }
+      // Normalize to 0–1 range
+      const maxV = Math.max(...volumes, 0.001);
+      for (let i = 0; i < volumes.length; i++) volumes[i] = Math.min(volumes[i] / maxV * 2.5, 1);
+
+      // Lip sync: read next volume every 20ms matching audio playback
+      const startTime = audioCtx.currentTime;
+      let lipFrame = 0;
       const lipIv = setInterval(() => {
-        if (!audioCtx) { clearInterval(lipIv); return }
-        const elapsed = (audioCtx.currentTime - startTime) * 1000 // ms
-        const idx = Math.floor((elapsed / 1000) * 16000)
-        if (idx >= pcm!.length) { clearInterval(lipIv); setLipLevel(0).catch(() => {}); return }
-        const s = Math.max(0, idx - 480), e = Math.min(pcm!.length, idx + 480)
-        let sum = 0; for (let j = s; j < e; j++) sum += pcm![j] * pcm![j]
-        const rms = Math.sqrt(sum / (e - s))
-        setLipLevel(Math.min(rms * 3, 1.0)).catch(() => {})
-      }, 40)
+        if (!audioCtx) { clearInterval(lipIv); return; }
+        const idx = Math.floor((audioCtx.currentTime - startTime) * 1000 / 20);
+        if (idx >= volumes.length) { clearInterval(lipIv); setLipLevel(0).catch(() => {}); return; }
+        if (idx !== lipFrame) { lipFrame = idx; setLipLevel(volumes[idx]).catch(() => {}); }
+      }, 20);
 
       // Wait for playback to finish
       await new Promise<void>(resolve => { ttsSource!.onended = () => resolve(); ttsSource!.start() })
