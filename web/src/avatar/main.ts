@@ -78,43 +78,26 @@ let isPinned = true; // default from tauri.conf.json: alwaysOnTop=true
 
 document.addEventListener('wheel', (e) => { e.preventDefault(); currentScale += e.deltaY > 0 ? -0.02 : 0.02; currentScale = Math.max(0.06, Math.min(0.50, currentScale)); if (model) model.scale.set(currentScale); try { localStorage.setItem('avatar_scale', String(currentScale)); } catch {} }, { passive: false });
 
-// Tap motion definitions — which motion to play when a HitArea is clicked
-// HitArea IDs: Haru uses "HitArea" (head) / "HitArea2" (body)
-// Motion group "Idle" contains 20 motions (m01–m19 + idle)
-const TAP_MOTIONS: Record<string, { group: string; index: number }> = {
-  HitArea: { group: "Idle", index: -1 },   // Head → random idle motion
-  HitArea2: { group: "Idle", index: -1 },  // Body → random idle motion
-};
-// Fallback: if hitTest returns a name rather than ID
-const TAP_NAMES: Record<string, string> = {
-  Head: "HitArea",
-  Body: "HitArea2",
-};
+// Tap reaction — trigger a random expression (Haru has no dedicated tap motions)
+// Expressions F01-F08 are brief facial changes that auto-reset after ~1s
+const TAP_EXPRESSIONS = ["f01", "f02", "f03", "f04", "f05", "f06", "f07", "f08"];
 
 // Middle-mouse drag to reposition the model within the window
 let dragModel = false, dragMx = 0, dragMy = 0, dragOx = 0, dragOy = 0;
 document.addEventListener('mousedown', (e) => {
   if (e.button === 1) { e.preventDefault(); dragModel = true; dragMx = e.clientX; dragMy = e.clientY; dragOx = model?.x ?? 0; dragOy = model?.y ?? 0; return; }
-  // Left click: poke/tap interaction
+  // Left click: poke reaction — any hit on the model triggers a random expression
   if (e.button === 0 && model && app) {
     const rect = (app.view as HTMLCanvasElement).getBoundingClientRect();
     const sx = (e.clientX - rect.left) * (app.renderer.width / rect.width);
     const sy = (e.clientY - rect.top) * (app.renderer.height / rect.height);
     const raw = (model as any).hitTest?.(sx - model.x, sy - model.y);
-    const hitName = Array.isArray(raw) ? raw[0] : raw; // pixi-live2d-display returns array
-    // Resolve: try ID first, then name fallback
-    let resolved = hitName ? (TAP_MOTIONS[hitName] ? hitName : TAP_NAMES[hitName]) : null;
-    if (!resolved) return; // miss → no-op
-    console.log('[Haru] poke:', hitName, '→', resolved);
-    if (TAP_MOTIONS[resolved]) {
-      const tm = TAP_MOTIONS[resolved];
-      const index = tm.index < 0 ? Math.floor(Math.random() * 19) + 1 : tm.index;
-      try { (model as any).motion?.(tm.group, index); } catch {}
-      // One-shot scale pop (not looping)
-      const orig = currentScale;
-      model.scale.set(orig + 0.04);
-      setTimeout(() => model?.scale.set(orig), 150);
-    }
+    const hitName = Array.isArray(raw) ? raw[0] : raw;
+    if (!hitName) return; // missed the model entirely
+    console.log('[Haru] poke:', hitName);
+    // Play a random expression for visual feedback
+    const expr = TAP_EXPRESSIONS[Math.floor(Math.random() * TAP_EXPRESSIONS.length)];
+    try { (model as any).expression?.(expr); } catch {}
   }
 });
 document.addEventListener('mousemove', (e) => {
