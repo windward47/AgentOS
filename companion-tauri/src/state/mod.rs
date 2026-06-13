@@ -347,8 +347,19 @@ pub async fn list_live2d_models() -> Result<Vec<String>, String> {
     if models.is_empty() {
         models.push("haru/haru.model3.json".into());
     }
-    models.sort();
+    // Filter: exclude known-incompatible models (.cmo3 format, moc3 v6)
+    models.retain(|p| {
+        let lower = p.to_lowercase();
+        !lower.contains("epsilon") && !lower.contains("/ren/") && !lower.contains("miku_pro")
+    });
     models.dedup();
+    // Also deduplicate by stripping intermediate "kei_zh/" prefix (home vs web dirs differ)
+    let mut seen = std::collections::HashSet::new();
+    models.retain(|p| {
+        let key = p.split('/').last().unwrap_or(p).to_string();
+        seen.insert(key)
+    });
+    models.sort();
     Ok(models)
 }
 
