@@ -134,6 +134,7 @@ async function startRecording() {
         store.addMessage({ role: 'user', content: text })
         try {
           const reply = await chat(text)
+          console.log('[ChatView] voice chat reply role=assistant, content:', reply.slice(0, 100))
           store.addMessage({ role: 'assistant', content: reply })
         } catch (err: any) { store.addMessage({ role: 'assistant', content: String(err) }) }
         finally { store.setSending(false) }
@@ -364,6 +365,7 @@ async function send() {
   store.addMessage({ role: 'user', content: text })
   try {
     const reply = await chat(text)
+    console.log('[ChatView] text chat reply role=assistant, content:', reply.slice(0, 100))
     store.addMessage({ role: 'assistant', content: reply })
   } catch (err: any) { store.addMessage({ role: 'assistant', content: String(err) }) }
   finally { store.setSending(false) }
