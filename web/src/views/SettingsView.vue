@@ -267,6 +267,7 @@ function onProviderChange(kind: 'llm' | 'asr' | 'tts') {
               <option value="xiaomi">Xiaomi</option>
               <option value="local_cosyvoice">Microsoft Edge</option>
             </select>
+          </div>
           <div><label class="block text-[11px] font-medium text-gray-600 mb-1">TTS Voice</label>
             <select v-model="config.global_voice.tts_voice" class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
               <option v-for="v in (TTS_VOICES['xiaomi'] || [])" :key="v" :value="v">{{ v }}</option>
