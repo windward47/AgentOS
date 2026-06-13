@@ -49,8 +49,19 @@ function showToast(msg: string) {
 const interruptEnabled = ref(true)
 const interruptSensitivity = ref(0.3)
 
-// ── Voice input ──
-const recording = ref(false)
+// ── Voice input state machine ──
+// Replaces recording/interruptRecording/voiceInFlight with single source of truth
+type VoiceState = 'idle' | 'listening' | 'processing' | 'speaking'
+const voiceState = ref<VoiceState>('idle')
+function tryTransition(to: VoiceState): boolean {
+  const from = voiceState.value
+  // Allowed transitions:
+  if (from === 'idle' && (to === 'listening' || to === 'speaking')) { voiceState.value = to; return true }
+  if (from === 'listening' && (to === 'processing' || to === 'idle')) { voiceState.value = to; return true }
+  if (from === 'processing' && (to === 'idle' || to === 'speaking')) { voiceState.value = to; return true }
+  if (from === 'speaking' && (to === 'idle' || to === 'listening')) { voiceState.value = to; return true }
+  return false
+}
 // ── Auto-stop VAD state ──
 let autoVadRaf = 0
 let autoSpeechStart = 0
@@ -66,6 +77,7 @@ let bgAnalyser: AnalyserNode | null = null
 let bgVadLoop = 0
 
 async function startRecording() {
+  if (!tryTransition('listening')) return
   try {
     const stream = backgroundStream || await navigator.mediaDevices.getUserMedia({ audio: true })
     if (!backgroundStream) backgroundStream = stream
@@ -83,7 +95,7 @@ async function startRecording() {
     autoSilenceStart = 0
 
     const vadLoop = () => {
-      if (!analyserNode || !recording.value) { autoVadRaf = 0; return }
+      if (!analyserNode || voiceState.value !== 'listening') { autoVadRaf = 0; return }
       analyserNode.getByteTimeDomainData(vadData)
       let sum = 0
       for (let i = 0; i < vadData.length; i++) {
@@ -114,7 +126,7 @@ async function startRecording() {
         }
       }
 
-      if (recording.value) autoVadRaf = requestAnimationFrame(vadLoop)
+      if (voiceState.value === 'listening') autoVadRaf = requestAnimationFrame(vadLoop)
     }
     autoVadRaf = requestAnimationFrame(vadLoop)
 
@@ -124,35 +136,33 @@ async function startRecording() {
     mediaRecorder.onstop = async () => {
       analyserNode = null
       vadLevel.value = 0
-      if (audioChunks.length === 0) { voiceInFlight = false; return }
-      // voiceInFlight was set by stopRecording() — proceed to process
+      if (audioChunks.length === 0) { voiceState.value = 'idle'; return }
+      // Transition to processing
+      voiceState.value = 'processing'
       const blob = new Blob(audioChunks, { type: 'audio/webm' })
       const pcm = await blobToPCM(blob)
-      if (pcm.length === 0) { voiceInFlight = false; return }
+      if (pcm.length === 0) { voiceState.value = 'idle'; return }
       try {
         const text = await transcribeAudio(Array.from(pcm))
-        if (!text) { voiceInFlight = false; return }
+        if (!text) { voiceState.value = 'idle'; return }
         store.setSending(true)
         store.addMessage({ role: 'user', content: text })
         try {
           const reply = await chat(text)
           store.addMessage({ role: 'assistant', content: reply })
         } catch (err: any) { store.addMessage({ role: 'assistant', content: String(err) }) }
-        finally { store.setSending(false); voiceInFlight = false; }
-      } catch (err: any) { showToast('ASR: ' + String(err)); console.error('ASR error:', err); voiceInFlight = false; }
+        finally { store.setSending(false) }
+      } catch (err: any) { showToast('ASR: ' + String(err)); console.error('ASR error:', err) }
+      voiceState.value = 'idle'
     }
     mediaRecorder.start()
-    recording.value = true
+    // recording.value already set by tryTransition in startRecording
   } catch (err: any) { showToast('Mic: ' + String(err)); console.error('Mic error:', err) }
 }
 
 function stopRecording() {
   if (autoVadRaf) { cancelAnimationFrame(autoVadRaf); autoVadRaf = 0 }
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    voiceInFlight = true  // lock before async stop() — prevents interrupt race
-    mediaRecorder.stop()
-  }
-  recording.value = false
+  if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop()
   analyserNode = null
   vadLevel.value = 0
 }
@@ -201,7 +211,7 @@ onBeforeUnmount(() => {
   backgroundStream?.getTracks().forEach(t => t.stop())
 })
 
-function toggleRecord() { recording.value ? stopRecording() : startRecording() }
+function toggleRecord() { voiceState.value === 'listening' ? stopRecording() : startRecording() }
 
 
 // ── Hotkey ──
@@ -279,6 +289,7 @@ async function playTTS(text: string, msgIdx: number) {
   if (playingId.value === msgIdx) { stopTTS(); return }
   stopTTS()
   playingId.value = msgIdx
+  voiceState.value = 'speaking'
 
   const chunks = chunkForTTS(text)
   if (chunks.length === 0) { playingId.value = null; return }
@@ -348,10 +359,12 @@ async function playTTS(text: string, msgIdx: number) {
 
     playingId.value = null
     ttsSource = null
+    if (voiceState.value === 'speaking') voiceState.value = 'idle'
   } catch (err: any) {
     showToast('TTS: ' + String(err))
     console.error('TTS error:', err)
     playingId.value = null
+    voiceState.value = 'idle'
   }
 }
 
@@ -359,6 +372,7 @@ function stopTTS() {
   if (ttsSource) { try { ttsSource.stop() } catch {}; ttsSource = null }
   if (audioCtx) { try { audioCtx.close() } catch {}; audioCtx = null }
   playingId.value = null
+  if (voiceState.value === 'speaking') voiceState.value = 'idle'
 }
 
 // ── Chat ──
@@ -386,9 +400,8 @@ let interruptChunks: Blob[] = []
 
 async function maybeInterrupt() {
   if (!interruptEnabled.value || !bgAnalyser || !ttsSource || playingId.value === null) return
-  if (interruptRecording || voiceInFlight) return
-  // When PTT is active, just stop TTS — don't start a second recorder
-  if (recording.value) { stopTTS(); return; }
+  // Only trigger interrupt from 'speaking' state
+  if (voiceState.value !== 'speaking') return
 
   const data = new Uint8Array(bgAnalyser.frequencyBinCount)
   bgAnalyser.getByteTimeDomainData(data)
@@ -409,20 +422,19 @@ async function maybeInterrupt() {
       stopTTS()
       interruptSpeechStart = 0
       // Start recording for ASR
-      if (backgroundStream) {
+      if (backgroundStream && tryTransition('listening')) {
         interruptRecorder = new MediaRecorder(backgroundStream, { mimeType: 'audio/webm' })
         interruptChunks = []
         interruptRecorder.ondataavailable = (e) => { if (e.data.size > 0) interruptChunks.push(e.data) }
         interruptRecorder.onstop = async () => {
-          if (interruptChunks.length === 0) return
-          if (voiceInFlight) return // PTT already handled this input
+          if (interruptChunks.length === 0) { voiceState.value = 'idle'; return }
+          voiceState.value = 'processing'
           const blob = new Blob(interruptChunks, { type: 'audio/webm' })
           const pcm = await blobToPCM(blob)
-          if (pcm.length === 0) return
-          voiceInFlight = true
+          if (pcm.length === 0) { voiceState.value = 'idle'; return }
           try {
             const text = await transcribeAudio(Array.from(pcm))
-            if (!text) { voiceInFlight = false; return }
+            if (!text) { voiceState.value = 'idle'; return }
             store.setSending(true)
             store.addMessage({ role: 'user', content: text })
             try {
@@ -431,15 +443,15 @@ async function maybeInterrupt() {
             } catch (err: any) { store.addMessage({ role: 'assistant', content: String(err) }) }
             finally { store.setSending(false) }
           } catch (err: any) { showToast('Interrupt ASR: ' + String(err)); console.error('ASR error:', err) }
-          interruptRecording = false; interruptSpeechStart = 0; interruptSilenceStart = 0; voiceInFlight = false;
+          voiceState.value = 'idle'
+          interruptSpeechStart = 0; interruptSilenceStart = 0
         }
         interruptRecorder.start()
-        interruptRecording = true
       }
     }
   } else {
-    // Silence
-    if (interruptRecording) {
+    // Silence — check if interrupt recorder is still running
+    if (interruptRecorder && interruptRecorder.state === 'recording') {
       if (!interruptSilenceStart) interruptSilenceStart = now
       const silenceMs = now - interruptSilenceStart
       if (silenceMs >= interruptSilenceMs.value) {
@@ -524,7 +536,7 @@ async function doBrowseScreenshot() {
         <div class="w-2 h-2 rounded-full bg-emerald-400" />
         <span class="text-sm font-medium text-gray-700">Companion</span>
         <!-- VAD level bar -->
-        <div v-if="recording || vadLevel > 0.05" class="flex items-center gap-1 ml-2">
+        <div v-if="voiceState === 'listening' || vadLevel > 0.05" class="flex items-center gap-1 ml-2">
           <div class="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
             <div class="h-full rounded-full transition-all duration-100"
               :class="vadLevel > 0.4 ? 'bg-red-400' : vadLevel > 0.2 ? 'bg-amber-400' : 'bg-emerald-400'"
@@ -620,9 +632,9 @@ async function doBrowseScreenshot() {
         </div>
         <div class="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-1 focus-within:border-blue-300 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
           <button @click="toggleRecord"
-            :class="['shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm transition-colors relative', recording ? 'bg-red-100 text-red-500' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100']"
-            :title="recording ? 'Stop' : 'Record'">
-            <span v-if="recording" class="text-xs">⏹</span>
+            :class="['shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm transition-colors relative', voiceState === 'listening' ? 'bg-red-100 text-red-500' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100']"
+            :title="voiceState === 'listening' ? 'Stop' : 'Record'">
+            <span v-if="voiceState === 'listening'" class="text-xs">⏹</span>
             <span v-else>🎤</span>
           </button>
           <input v-model="input" type="text" :placeholder="voiceMode === 'auto' ? 'Speak or type...' : 'Message or ' + hotkey + ' to speak...'"
