@@ -84,8 +84,19 @@ document.addEventListener('dblclick', () => {
 
 async function loadModel(path: string) {
   if (model) { app.stage.removeChild(model as any); model = null; }
-  const url = '/live2d/models/' + path;
-  console.log('[Haru] Loading model:', url);
+  // Try ~/.companion/models/ first, fall back to /live2d/models/ (bundled haru)
+  let url: string;
+  try {
+    const { convertFileSrc } = await import('@tauri-apps/api/core');
+    const home = await invokeFn?.('get_config').catch(() => ({})) as any;
+    const sandbox: string = home?.sandbox_path || '';
+    const base = sandbox.endsWith('/sandbox') ? sandbox.replace('/sandbox', '') : '';
+    const localPath = `${base}/${path}`;
+    url = convertFileSrc(localPath);
+  } catch {
+    url = '/live2d/models/' + path;
+  }
+  console.log('[Haru] Loading model:', path, url.includes('asset://') ? '(local)' : '(web)');
   try {
     const m = await Live2DModel.from(url, { autoUpdate: true, autoInteract: false });
     m.anchor.set(0.5, 0.5);
