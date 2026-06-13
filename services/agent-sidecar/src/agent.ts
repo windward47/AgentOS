@@ -166,6 +166,52 @@ export interface AgentCallbacks {
 
 // ── Sandbox tools ──────────────────────────────────────────────────────
 
+// ── Emotion & think-tag parsing ────────────────────────────────────────
+
+/** Map emotion labels to Haru expression IDs (f01–f08). */
+const EMOTION_MAP: Record<string, string> = {
+    happy: "f01",
+    sad: "f02",
+    angry: "f03",
+    surprised: "f04",
+    shy: "f05",
+    fear: "f02",
+    joy: "f01",
+    neutral: "",
+};
+
+const EMOTION_KEYS = Object.keys(EMOTION_MAP).join("|");
+const EMOTION_REGEX = new RegExp(`\\[(${EMOTION_KEYS})\\]`, "gi");
+
+/** Parse emotion tags from text, return { cleanText, emotions }. */
+export function parseEmotions(text: string): { cleanText: string; emotions: string[] } {
+    const emotions: string[] = [];
+    const cleanText = text.replace(EMOTION_REGEX, (_match, tag) => {
+        const exprId = EMOTION_MAP[(tag as string).toLowerCase()];
+        if (exprId) emotions.push(exprId);
+        return "";
+    });
+    return { cleanText: cleanText.replace(/\s{2,}/g, " ").trim(), emotions };
+}
+
+/** Parse <think>...</think> tags: wrap inner content in markdown italic. */
+export function parseThinkTags(text: string): { displayText: string; ttsText: string } {
+    const thinkRegex = /<think>([\s\S]*?)<\/think>/gi;
+    let ttsText = text;
+    let displayText = text;
+    // For TTS: remove think content entirely
+    ttsText = ttsText.replace(thinkRegex, "");
+    // For display: replace <think>...</think> with *...* (italic markdown)
+    displayText = displayText.replace(thinkRegex, (_match, inner) => `*${inner.trim()}*`);
+    return { displayText: displayText.trim(), ttsText: ttsText.replace(/\s{2,}/g, " ").trim() };
+}
+
+/** Build the emotion tag instruction string for the system prompt. */
+export function emotionPromptFragment(): string {
+    const tags = Object.keys(EMOTION_MAP).filter(k => k !== "neutral" && EMOTION_MAP[k] !== EMOTION_MAP.neutral).join(", ");
+    return `You can add emotion tags to your responses to control your facial expression. Available tags: [${tags}]. Use them naturally — like "[happy] Hello!" or "[surprised] That's interesting! [smirk] But I have a secret.".`;
+}
+
 function makeSandboxTools(sandboxRoot: string): AgentTool[] {
     const safe = (rel: string) => sandboxResolve(rel || ".", sandboxRoot);
 
@@ -431,23 +477,37 @@ export class AgentManager {
         return this.messageHistory;
     }
 
-    async chat(message: string, _history?: Array<{ role: string; content: string }>, systemPrompt?: string): Promise<{ text: string; history: Array<{ role: string; content: string }> }> {
-        if (systemPrompt && systemPrompt.length > 0) this.agent.setSystemPrompt([systemPrompt]);
+    async chat(message: string, _history?: Array<{ role: string; content: string }>, systemPrompt?: string): Promise<{ text: string; history: Array<{ role: string; content: string }>; emotions?: string[] }> {
+        // Inject emotion + think-tag guidance into system prompt
+        const emotionPrompt = emotionPromptFragment();
+        const thinkPrompt = " You can also wrap inner thoughts in <think>...</think> tags — they'll be shown but not spoken.";
+        const enhancedPrompt = systemPrompt
+            ? `${systemPrompt}\n\n${emotionPrompt}${thinkPrompt}`
+            : `${emotionPrompt}${thinkPrompt}`;
+        this.agent.setSystemPrompt([enhancedPrompt]);
 
-        return new Promise<{ text: string; history: Array<{ role: string; content: string }> }>((resolve, reject) => {
+        return new Promise<{ text: string; history: Array<{ role: string; content: string }>; emotions?: string[] }>((resolve, reject) => {
             let fullText = "";
             const unsubscribe = this.agent.subscribe((event: AgentEvent) => {
                 if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
                     fullText += event.assistantMessageEvent.delta;
                 } else if (event.type === "agent_end") {
                     unsubscribe();
-                    const text = fullText || "(no response)";
+                    const rawText = fullText || "(no response)";
+                    // Parse emotion + think tags
+                    const { displayText, ttsText } = parseThinkTags(rawText);
+                    const { cleanText, emotions } = parseEmotions(displayText);
+                    const text = cleanText || displayText;
                     this.messageHistory.push({ role: "user", content: message });
                     this.messageHistory.push({ role: "assistant", content: text });
                     if (this.messageHistory.length > 50) {
                         this.messageHistory = this.messageHistory.slice(-50);
                     }
-                    resolve({ text, history: this.messageHistory });
+                    resolve({
+                        text,
+                        history: this.messageHistory,
+                        ...(emotions.length > 0 ? { emotions } : {}),
+                    });
                 }
             });
             this.agent.prompt(message, { toolChoice: undefined }).catch((err: Error) => {

@@ -43,6 +43,7 @@ pub struct ConversationMessage {
 pub struct AgentResponse {
     pub text: String,
     pub history: Vec<ConversationMessage>,
+    pub emotions: Vec<String>,
     pub tool_calls: Vec<String>, // tool names that were invoked
 }
 

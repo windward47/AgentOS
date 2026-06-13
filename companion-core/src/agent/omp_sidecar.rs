@@ -359,6 +359,12 @@ impl AgentEngine for OmpAgentSidecar {
         let result = self.send_request("chat", Some(params)).await?;
         let text = result.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
 
+        // Parse emotions from sidecar response
+        let emotions: Vec<String> = result.get("emotions")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+
         // B1b: parse history from sidecar response
         let mut conversation_history = Vec::new();
         if let Some(arr) = result.get("history").and_then(|v| v.as_array()) {
@@ -378,7 +384,7 @@ impl AgentEngine for OmpAgentSidecar {
             }
         }
 
-        Ok(AgentResponse { text, history: conversation_history, tool_calls: vec![] })
+        Ok(AgentResponse { text, history: conversation_history, emotions, tool_calls: vec![] })
     }
 
     async fn chat_stream(&self, message: &str, history: &[ConversationMessage]) -> Result<tokio::sync::mpsc::Receiver<AgentStreamEvent>, AgentError> {

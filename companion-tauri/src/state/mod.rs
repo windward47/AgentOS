@@ -101,6 +101,7 @@ async fn do_chat(
     agent: &AgentState,
     config: &ConfigState,
     message: String,
+    app: &tauri::AppHandle,
 ) -> Result<String, String> {
     if !agent.agent.is_running().await {
         agent.agent.spawn().await
@@ -112,6 +113,12 @@ async fn do_chat(
     // B1b: history is managed by sidecar; pass empty (sidecar has its own)
     let response = agent.agent.chat(&message, &[], Some(&system_prompt)).await
         .map_err(|e| format!("Agent error: {e}"))?;
+    // Emit emotions to avatar window for Live2D expression
+    if !response.emotions.is_empty() {
+        let _ = app.emit("emotion_event", serde_json::json!({
+            "expressions": response.emotions,
+        }));
+    }
     Ok(response.text)
 }
 
@@ -119,9 +126,10 @@ async fn do_chat(
 pub async fn chat(
     agent: tauri::State<'_, AgentState>,
     config: tauri::State<'_, ConfigState>,
+    app: tauri::AppHandle,
     message: String,
 ) -> Result<String, String> {
-    do_chat(&agent, &config, message).await
+    do_chat(&agent, &config, message, &app).await
 }
 
 /// B1d: unified agent action — routes to sidecar, single IPC for all agent operations.

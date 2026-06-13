@@ -87,3 +87,5 @@ services/*
 
 web/node_modules
 web/public/live2d/models/
+
+Open-LLM-VTuber-main/

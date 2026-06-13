@@ -19,6 +19,7 @@ mod e2e_tests {
                     ConversationMessage { role: MessageRole::Assistant, content: format!("Echo: {message}") },
                 ],
                 tool_calls: vec![],
+                emotions: vec!["f01".into()],
             })
         }
         async fn chat_stream(&self, message: &str, _history: &[ConversationMessage]) -> Result<tokio::sync::mpsc::Receiver<AgentStreamEvent>, AgentError> {

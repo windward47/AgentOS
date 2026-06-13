@@ -38,6 +38,14 @@ const tauriReady = Promise.all([
       const path = event.payload as string;
       if (path && path !== currentModelPath) loadModel(path);
     });
+    m.listen('emotion_event', (event: any) => {
+      const expressions: string[] = event.payload?.expressions ?? [];
+      if (expressions.length > 0 && model) {
+        try {
+          (model as any).expression?.(expressions[0]);
+        } catch {}
+      }
+    });
   }),
 ]);
 document.addEventListener('contextmenu', e => { e.preventDefault(); const c = document.getElementById('ctx-menu')!; c.style.left = Math.min(e.clientX, innerWidth - 110) + 'px'; c.style.top = Math.min(e.clientY, innerHeight - 50) + 'px'; c.style.display = 'block'; });
