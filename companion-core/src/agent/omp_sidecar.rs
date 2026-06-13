@@ -289,6 +289,11 @@ impl OmpAgentSidecar {
         Ok(())
     }
 
+    /// Get conversation history from the sidecar.
+    pub async fn get_history(&self) -> Result<Value, AgentError> {
+        self.send_request("get_history", None).await
+    }
+
     /// Register sandbox tool definitions with the sidecar so the LLM can call them.
     /// `defs` should come from [`crate::tools::ToolRegistry::definitions()`].
     pub async fn register_tools(&self, defs: Vec<Value>, sandbox_root: &str) -> Result<(), AgentError> {
@@ -331,7 +336,27 @@ impl AgentEngine for OmpAgentSidecar {
         }
         let result = self.send_request("chat", Some(params)).await?;
         let text = result.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        Ok(AgentResponse { text, tool_calls: vec![] })
+
+        // B1b: parse history from sidecar response
+        let mut conversation_history = Vec::new();
+        if let Some(arr) = result.get("history").and_then(|v| v.as_array()) {
+            for entry in arr {
+                let role = entry.get("role").and_then(|v| v.as_str()).unwrap_or("user");
+                let content = entry.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                let msg_role = match role {
+                    "assistant" => super::MessageRole::Assistant,
+                    "system" => super::MessageRole::System,
+                    "tool" => super::MessageRole::Tool,
+                    _ => super::MessageRole::User,
+                };
+                conversation_history.push(ConversationMessage {
+                    role: msg_role,
+                    content: content.to_string(),
+                });
+            }
+        }
+
+        Ok(AgentResponse { text, history: conversation_history, tool_calls: vec![] })
     }
 
     async fn chat_stream(&self, message: &str, history: &[ConversationMessage]) -> Result<tokio::sync::mpsc::Receiver<AgentStreamEvent>, AgentError> {

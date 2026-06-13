@@ -21,14 +21,12 @@ use tauri::{Manager, Emitter};
 /// Manages the agent engine and conversation history.
 pub struct AgentState {
     pub agent: Arc<OmpAgentSidecar>,
-    pub history: Arc<Mutex<Vec<ConversationMessage>>>,
 }
 
 impl AgentState {
     pub fn new() -> Self {
         Self {
             agent: Arc::new(OmpAgentSidecar::new()),
-            history: Arc::new(Mutex::new(Vec::new())),
         }
     }
 }
@@ -132,7 +130,7 @@ impl ToolState {
 // Tauri IPC Commands
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Shared core: spawn sidecar, chat, update history.
+/// Shared core: spawn sidecar, chat, sync config on first spawn.
 async fn do_chat(
     agent: &AgentState,
     config: &ConfigState,
@@ -151,16 +149,10 @@ async fn do_chat(
         agent.agent.register_tools(t.tools.definitions(), &root).await
             .map_err(|e| format!("Register tools: {e}"))?;
     }
-    let history_snapshot = { agent.history.lock().await.clone() };
     let system_prompt = config.config.lock().await.custom_system_prompt.clone();
-    let response = agent.agent.chat(&message, &history_snapshot, Some(&system_prompt)).await
+    // B1b: history is managed by sidecar; pass empty (sidecar has its own)
+    let response = agent.agent.chat(&message, &[], Some(&system_prompt)).await
         .map_err(|e| format!("Agent error: {e}"))?;
-    {
-        let mut hist = agent.history.lock().await;
-        hist.push(ConversationMessage { role: MessageRole::User, content: message });
-        hist.push(ConversationMessage { role: MessageRole::Assistant, content: response.text.clone() });
-        if hist.len() > 50 { let keep = hist.len() - 50; hist.rotate_left(keep); hist.truncate(50); }
-    }
     Ok(response.text)
 }
 
@@ -187,13 +179,28 @@ pub async fn chat_with_tools(
 pub async fn get_history(
     agent: tauri::State<'_, AgentState>,
 ) -> Result<Vec<ConversationMessage>, String> {
-    let hist = agent.history.lock().await;
-    Ok(hist.clone())
+    if !agent.agent.is_running().await {
+        return Ok(vec![]);
+    }
+    let val = agent.agent.get_history().await.map_err(|e| format!("get_history: {e}"))?;
+    let arr = val.get("history").and_then(|v| v.as_array()).ok_or("bad history response")?;
+    let mut out = Vec::new();
+    for entry in arr {
+        let role_str = entry.get("role").and_then(|v| v.as_str()).unwrap_or("user");
+        let content = entry.get("content").and_then(|v| v.as_str()).unwrap_or("");
+        let role = match role_str {
+            "assistant" => MessageRole::Assistant,
+            "system" => MessageRole::System,
+            "tool" => MessageRole::Tool,
+            _ => MessageRole::User,
+        };
+        out.push(ConversationMessage { role, content: content.to_string() });
+    }
+    Ok(out)
 }
 
 #[tauri::command]
 pub async fn clear_history(agent: tauri::State<'_, AgentState>) -> Result<(), String> {
-    agent.history.lock().await.clear();
     if agent.agent.is_running().await {
         agent.agent.clear_history().await.map_err(|e| format!("clear history: {e}"))?;
     }

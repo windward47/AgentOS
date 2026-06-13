@@ -42,6 +42,7 @@ pub struct ConversationMessage {
 #[derive(Debug, Clone)]
 pub struct AgentResponse {
     pub text: String,
+    pub history: Vec<ConversationMessage>,
     pub tool_calls: Vec<String>, // tool names that were invoked
 }
 

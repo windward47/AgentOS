@@ -223,6 +223,7 @@ export class AgentManager {
     private model: Model<Api>;
     private apiKey: string;
     private companionConfig: CompanionConfig;
+    private messageHistory: Array<{ role: string; content: string }> = [];
     private currentAbortController: AbortController | null = null;
     private pendingPrompt: Promise<void> | null = null;
     private resolvePending: (() => void) | null = null;
@@ -308,22 +309,31 @@ export class AgentManager {
     }
 
     clearHistory(): void {
+        this.messageHistory = [];
         this.agent.clearMessages();
     }
 
-    async chat(message: string, history?: Array<{ role: string; content: string }>, systemPrompt?: string): Promise<string> {
-        if (systemPrompt && systemPrompt.length > 0) this.agent.setSystemPrompt([systemPrompt]);
-        // Only clear if explicit clear is requested (via clearHistory from Rust)
-        // pi-agent-core's Agent internally manages conversation state across turns.
+    getHistory(): Array<{ role: string; content: string }> {
+        return this.messageHistory;
+    }
 
-        return new Promise<string>((resolve, reject) => {
+    async chat(message: string, _history?: Array<{ role: string; content: string }>, systemPrompt?: string): Promise<{ text: string; history: Array<{ role: string; content: string }> }> {
+        if (systemPrompt && systemPrompt.length > 0) this.agent.setSystemPrompt([systemPrompt]);
+
+        return new Promise<{ text: string; history: Array<{ role: string; content: string }> }>((resolve, reject) => {
             let fullText = "";
             const unsubscribe = this.agent.subscribe((event: AgentEvent) => {
                 if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
                     fullText += event.assistantMessageEvent.delta;
                 } else if (event.type === "agent_end") {
                     unsubscribe();
-                    resolve(fullText || "(no response)");
+                    const text = fullText || "(no response)";
+                    this.messageHistory.push({ role: "user", content: message });
+                    this.messageHistory.push({ role: "assistant", content: text });
+                    if (this.messageHistory.length > 50) {
+                        this.messageHistory = this.messageHistory.slice(-50);
+                    }
+                    resolve({ text, history: this.messageHistory });
                 }
             });
             this.agent.prompt(message, { toolChoice: undefined }).catch((err: Error) => {

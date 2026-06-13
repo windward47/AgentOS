@@ -49,8 +49,13 @@ async function handleRequest(req: { id: string; method: string; params?: Record<
 
             case "chat": {
                 const p = (params ?? {}) as ChatParams;
-                const text = await agentManager.chat(p.message, p.history, p.system_prompt);
-                send(id, "result", { text });
+                const result = await agentManager.chat(p.message, p.history, p.system_prompt);
+                send(id, "result", result);
+                break;
+            }
+
+            case "get_history": {
+                send(id, "result", { history: agentManager.getHistory() });
                 break;
             }
 
