@@ -129,9 +129,9 @@ pub async fn handle_voice_command(
                 return;
             }
 
-            let provider = cfg_guard.global_voice.tts_provider.clone();
-            let voice = cfg_guard.global_voice.tts_voice.clone();
-            let speed = cfg_guard.global_voice.tts_speed;
+            let provider = cfg_guard.tts_provider.clone();
+            let voice = cfg_guard.tts_voice.clone();
+            let speed = cfg_guard.tts_speed;
             drop(cfg_guard);
 
             let pcm_f32 = if provider == "local_cosyvoice" {
