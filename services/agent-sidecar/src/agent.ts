@@ -53,7 +53,7 @@ async function webSearch(query: string) {
 
 // ── File & system tools (Bun native) ───────────────────────────────────
 
-import { readFileSync, writeFileSync, existsSync, unlinkSync, rmdirSync, statSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, unlinkSync, rmdirSync, statSync, mkdirSync, readdirSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -516,6 +516,38 @@ export class AgentManager {
 
     getHistory(): Array<{ role: string; content: string }> {
         return this.messageHistory;
+    }
+
+    // ── Character presets ──────────────────────────────────────────
+
+    listCharacterPresets(): Array<{ name: string; file: string }> {
+        try {
+            const dir = join(homedir(), ".companion", "characters");
+            if (!existsSync(dir)) return [];
+            const files = readdirSync(dir).filter(f => f.endsWith(".json"));
+            return files.map(f => {
+                try {
+                    const data = JSON.parse(readFileSync(join(dir, f), "utf-8"));
+                    return { name: data.name || f.replace(".json", ""), file: f };
+                } catch { return { name: f.replace(".json", ""), file: f }; }
+            });
+        } catch { return []; }
+    }
+
+    loadCharacterPreset(filename: string): CompanionConfig | null {
+        try {
+            const dir = join(homedir(), ".companion", "characters");
+            const path = join(dir, filename);
+            if (!existsSync(path)) return null;
+            const preset = JSON.parse(readFileSync(path, "utf-8"));
+            // Deep merge preset over current config
+            const merged = { ...this.companionConfig, ...preset };
+            this.companionConfig = merged;
+            saveCompanionConfig(merged);
+            // Recreate agent with new prompt
+            this.agent = this.createAgent();
+            return merged;
+        } catch { return null; }
     }
 
     private saveConversation(): void {

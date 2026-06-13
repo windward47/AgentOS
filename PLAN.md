@@ -925,11 +925,7 @@ companion-tauri/ (Tauri 桌面壳 — 纯转发)
 - 嵌套深度计数的括号/星号/方括号过滤
 - 替换当前 `stripForTTS` 的简单正则
 
-### S3.3 — 流式逐句显示 📋
-
-- 接入已实现的 `chat_stream` RPC
-- 侧车 `sentence_divider` 按句号拆句
-- 前端逐句渲染，不等全文
+### S3.3 — 流式逐句显示 📋 (deferred — needs Rust chat_stream Tauri integration)
 
 ### S3.4 — 角色配置热切换 📋
 

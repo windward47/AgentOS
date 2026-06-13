@@ -129,6 +129,20 @@ async function handleRequest(req: { id: string; method: string; params?: Record<
                 break;
             }
 
+            case "list_character_presets": {
+                send(id, "result", { presets: agentManager.listCharacterPresets() });
+                break;
+            }
+
+            case "load_character_preset": {
+                const p = (params ?? {}) as { file?: string };
+                if (!p.file) { send(id, "error", { message: "missing file" }); break; }
+                const cfg = agentManager.loadCharacterPreset(p.file);
+                if (!cfg) { send(id, "error", { message: "preset not found" }); break; }
+                send(id, "result", cfg);
+                break;
+            }
+
             case "agent_action": {
                 // B1d: unified event-based action routing
                 const p = (params ?? {}) as { type?: string; payload?: Record<string, unknown> };
