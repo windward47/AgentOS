@@ -209,12 +209,6 @@ async function startBackgroundVAD() {
 }
 
 onMounted(() => {
-  // Reset if user previously set a global hotkey as frontend hotkey
-  if (savedHotkey === 'Alt+`' || savedHotkey === 'Alt+T') {
-    savedHotkey = 'Ctrl+Shift+V'
-    hotkey.value = savedHotkey
-    shortcutDisplay.value = savedHotkey
-  }
   startBackgroundVAD()
   // Load voice preferences from config
   getConfig().then(c => {
@@ -253,8 +247,6 @@ function parseHotkey(e: KeyboardEvent): string | null {
 
 function onKeyDown(e: KeyboardEvent) {
   const parsed = parseHotkey(e)
-  // Never intercept global hotkeys (Alt+` / Alt+T)
-  if (parsed === 'Alt+`' || parsed === 'Alt+T') return
   if (parsed === savedHotkey) {
     e.preventDefault()
     toggleRecord()
@@ -268,13 +260,6 @@ function startHotkeyCapture() {
     const p = parseHotkey(e)
     if (p) {
       e.preventDefault()
-      // Block conflicting global hotkeys
-      if (p === 'Alt+`' || p === 'Alt+T') {
-        hotkey.value = original; shortcutDisplay.value = original
-        showToast('Alt+` and Alt+T are reserved for system-wide ASR/TTS')
-        document.removeEventListener('keydown', handler)
-        return
-      }
       savedHotkey = p
       hotkey.value = p
       shortcutDisplay.value = p
@@ -425,10 +410,6 @@ import('@tauri-apps/api/event').then(m => {
     if (p.token && streamingIdx.value >= 0) {
       store.messages[streamingIdx.value].content += p.token
     }
-  })
-  // Alt+` global hotkey: insert ASR result into chat input
-  m.listen<{ text: string }>('voice_asr_result', (evt) => {
-    if (document.hasFocus()) input.value = evt.payload.text
   })
 }).catch((e) => { console.error('[ChatView] event listen failed:', e) })
 

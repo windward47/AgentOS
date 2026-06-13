@@ -13,7 +13,6 @@ use companion_core::tts::{TtsProvider, xiaomi_tts::XiaomiTts};
 use companion_core::tts::playback;
 use companion_core::config::{CompanionConfig, resolve_provider_key};
 use tauri::Manager;
-use tauri::Emitter;
 use enigo::Keyboard;
 
 use crate::state::{VoiceState, ConfigState};
@@ -89,10 +88,6 @@ pub async fn handle_voice_command(
             }
             log::info!("[GlobalVoice] ASR result: {} chars", text.len());
 
-            // Emit to chat input via Tauri event
-            let _ = app.emit("voice_asr_result", serde_json::json!({ "text": &text }));
-
-            // Also inject into focused app (works in any application)
             let mode = *inject_mode.lock().unwrap();
             log::info!("[GlobalVoice] Injecting via {:?}", mode);
             if let Err(e) = inject_text(&text, mode) {
