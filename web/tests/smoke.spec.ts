@@ -48,8 +48,8 @@ test.describe('Companion UI smoke tests', () => {
     const profileSection = page.getByText('Profile')
     await expect(profileSection).toBeVisible()
 
-    // Back button
-    const backBtn = page.getByText('Back')
+    // Back button (use role-based selector — Settings page may contain 'back' in text)
+    const backBtn = page.getByRole('button', { name: '← Back' })
     await expect(backBtn).toBeVisible()
 
     // Navigate back
