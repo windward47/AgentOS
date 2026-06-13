@@ -88,6 +88,9 @@ pub async fn handle_voice_command(
             }
             log::info!("[GlobalVoice] ASR result: {} chars", text.len());
 
+            // Emit to chat window so it appears in the input box
+            let _ = app.emit("voice_asr_result", serde_json::json!({ "text": &text }));
+
             let mode = *inject_mode.lock().unwrap();
             log::info!("[GlobalVoice] Injecting via {:?}", mode);
             if let Err(e) = inject_text(&text, mode) {

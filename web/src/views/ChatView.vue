@@ -406,14 +406,14 @@ const streamingIdx = ref(-1) // message index currently being streamed
 import('@tauri-apps/api/event').then(m => {
   m.listen<{ token?: string; done?: boolean }>('chat_token', (evt) => {
     const p = evt.payload
-    if (p.done) {
-      streamingIdx.value = -1
-      return
-    }
+    if (p.done) { streamingIdx.value = -1; return }
     if (p.token && streamingIdx.value >= 0) {
-      const msgs = store.messages
-      msgs[streamingIdx.value].content += p.token
+      store.messages[streamingIdx.value].content += p.token
     }
+  })
+  // Alt+` global hotkey: insert ASR result into chat input
+  m.listen<{ text: string }>('voice_asr_result', (evt) => {
+    input.value = evt.payload.text
   })
 }).catch(() => {})
 
