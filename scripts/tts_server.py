@@ -24,29 +24,40 @@ async def list_models():
 
 @app.post("/v1/audio/speech")
 async def synthesize(request: dict):
-    import edge_tts, struct
+    import edge_tts, struct, subprocess
     text = request.get("input", "")
     voice = request.get("voice", DEFAULT_VOICE)
     if not text:
         return Response(status_code=400)
 
-    tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
-    tmp.close()
+    tmp_mp3 = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+    tmp_mp3.close()
+    tmp_wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    tmp_wav.close()
     try:
         communicate = edge_tts.Communicate(text, voice)
-        await communicate.save(tmp.name)
-        # Decode MP3 to PCM f32 using torchaudio (already installed)
-        import torchaudio
-        waveform, sr = torchaudio.load(tmp.name)
-        if sr != 16000:
-            import torchaudio.functional as F
-            waveform = F.resample(waveform, sr, 16000)
-        # Convert to mono PCM f32
-        mono = waveform.mean(dim=0) if waveform.shape[0] > 1 else waveform[0]
-        pcm = mono.numpy().astype('float32').tobytes()
-        return Response(content=pcm, media_type="audio/pcm")
+        await communicate.save(tmp_mp3.name)
+        # Convert MP3 to 16kHz mono WAV via ffmpeg (or pydub fallback)
+        try:
+            subprocess.run(["ffmpeg", "-y", "-i", tmp_mp3.name, "-ar", "16000", "-ac", "1", "-f", "wav", tmp_wav.name],
+                         check=True, capture_output=True, timeout=30)
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            # Fallback: use wave module to read MP3 with pydub
+            from pydub import AudioSegment
+            audio = AudioSegment.from_mp3(tmp_mp3.name)
+            audio = audio.set_frame_rate(16000).set_channels(1)
+            audio.export(tmp_wav.name, format="wav")
+        # Read WAV → PCM f32
+        import wave
+        with wave.open(tmp_wav.name, "rb") as wf:
+            samples = wf.readframes(wf.getnframes())
+        pcm = struct.unpack("<" + "h" * (len(samples) // 2), samples)
+        f32 = [s / 32768.0 for s in pcm]
+        return Response(content=struct.pack("<" + "f" * len(f32), *f32), media_type="audio/pcm")
     finally:
-        os.unlink(tmp.name)
+        for f in [tmp_mp3.name, tmp_wav.name]:
+            try: os.unlink(f)
+            except: pass
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
