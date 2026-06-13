@@ -52,18 +52,16 @@ impl ToolRegistry {
         reg
     }
 
-    /// Return the list of tool definitions for LLM function-calling.
+    /// Return the list of tool definitions for LLM function-calling
+    /// (flat format — ready for sidecar registration).
     pub fn definitions(&self) -> Vec<serde_json::Value> {
         self.tools
             .values()
             .map(|t| {
                 serde_json::json!({
-                    "type": "function",
-                    "function": {
-                        "name": t.name(),
-                        "description": t.description(),
-                        "parameters": t.parameters(),
-                    }
+                    "name": t.name(),
+                    "description": t.description(),
+                    "parameters": t.parameters(),
                 })
             })
             .collect()

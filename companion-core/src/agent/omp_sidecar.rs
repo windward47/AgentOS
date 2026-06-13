@@ -288,6 +288,17 @@ impl OmpAgentSidecar {
         self.send_request("clear_history", None).await?;
         Ok(())
     }
+
+    /// Register sandbox tool definitions with the sidecar so the LLM can call them.
+    /// `defs` should come from [`crate::tools::ToolRegistry::definitions()`].
+    pub async fn register_tools(&self, defs: Vec<Value>, sandbox_root: &str) -> Result<(), AgentError> {
+        let params = serde_json::json!({
+            "tools": defs,
+            "sandbox_root": sandbox_root,
+        });
+        self.send_request("register_tools", Some(params)).await?;
+        Ok(())
+    }
 }
 
 #[async_trait]

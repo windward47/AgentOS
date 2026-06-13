@@ -30,7 +30,7 @@ async function duckDuckGoSearch(query: string) {
 
 // ── File & system tools (Bun native) ───────────────────────────────────
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, unlinkSync, rmdirSync, statSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { Glob } from "bun";
 
@@ -376,18 +376,71 @@ export class AgentManager {
         name: string;
         description: string;
         parameters: Record<string, unknown>;
-    }>): void {
+    }>, sandboxRoot: string): void {
+        // Resolve relative paths against the sandbox root.
+        const resolve = (rel: string): string => {
+            return `${sandboxRoot}/${rel}`.replace(/\/+/g, "/");
+        };
         const tools: AgentTool[] = toolDefs.map((def) => ({
             name: def.name,
             label: def.name,
             description: def.description,
             parameters: def.parameters as any,
-            execute: async (toolCallId: string, params: any) => {
-                // For now, sandbox tools are executed inside the sidecar process.
-                // In production, we'd forward to the Rust side via a callback.
-                return {
-                    content: [{ type: "text" as const, text: `Tool ${def.name} executed with params: ${JSON.stringify(params)}` }],
-                };
+            execute: async (_toolCallId: string, params: any) => {
+                try {
+                    switch (def.name) {
+                        case "sandbox_list": {
+                            const dir = resolve(params.path || ".");
+                            const glob = new Glob("*");
+                            const entries = Array.from(glob.scanSync({ cwd: dir, absolute: false }));
+                            const items: Array<{ name: string; type: string; size: number }> = [];
+                            for (const e of entries) {
+                                const full = `${dir}/${e}`.replace(/\/+/g, "/");
+                                let type: string = "file";
+                                let size = 0;
+                                try {
+                                    const stat = readFileSync(full, "utf-8");
+                                    size = stat.length;
+                                } catch {
+                                    type = "directory";
+                                }
+                                items.push({ name: e, type, size });
+                            }
+                            return { content: [{ type: "text" as const, text: JSON.stringify({ entries: items }, null, 2) }] };
+                        }
+                        case "sandbox_read": {
+                            const path = resolve(params.path);
+                            const text = readFileSync(path, "utf-8").slice(0, 20000);
+                            return { content: [{ type: "text" as const, text: JSON.stringify({ content: text }) }] };
+                        }
+                        case "sandbox_write": {
+                            const path = resolve(params.path);
+                            writeFileSync(path, params.content, "utf-8");
+                            return { content: [{ type: "text" as const, text: JSON.stringify({ path, size: params.content.length }) }] };
+                        }
+                        case "sandbox_delete": {
+                            const path = resolve(params.path);
+                            if (existsSync(path)) {
+                                const s = statSync(path);
+                                if (s.isDirectory()) rmdirSync(path);
+                                else unlinkSync(path);
+                            }
+                            return { content: [{ type: "text" as const, text: JSON.stringify({ deleted: params.path }) }] };
+                        }
+                        case "sandbox_execute": {
+                            const cmd = params.command as string;
+                            if (/[;&|$`\n\r]/.test(cmd)) {
+                                return { content: [{ type: "text" as const, text: "sandbox_execute error: command contains dangerous characters" }] };
+                            }
+                            const output = execSync(cmd, { encoding: "utf-8", timeout: 30_000, cwd: sandboxRoot }).slice(0, 4000);
+                            return { content: [{ type: "text" as const, text: output || "(no output)" }] };
+                        }
+                        default:
+                            return { content: [{ type: "text" as const, text: `Tool ${def.name} is not implemented.` }] };
+                    }
+                } catch (err: any) {
+                    return { content: [{ type: "text" as const, text: `${def.name} error: ${err.message}` }] };
+                }
             },
         })) as unknown as AgentTool[];
 

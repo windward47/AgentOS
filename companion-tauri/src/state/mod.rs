@@ -167,6 +167,7 @@ pub async fn chat(
 pub async fn chat_with_tools(
     agent: tauri::State<'_, AgentState>,
     config: tauri::State<'_, ConfigState>,
+    tools: tauri::State<'_, ToolState>,
     message: String,
 ) -> Result<String, String> {
     if !agent.agent.is_running().await {
@@ -175,6 +176,17 @@ pub async fn chat_with_tools(
             .spawn()
             .await
             .map_err(|e| format!("Sidecar spawn failed: {e}"))?;
+    }
+    // Register sandbox tools so the LLM can call sandbox_list/read/write/delete/execute
+    {
+        let cfg = config.config.lock().await;
+        let sandbox_root = cfg.sandbox_path.to_string_lossy().to_string();
+        let defs = tools.tools.definitions();
+        agent
+            .agent
+            .register_tools(defs, &sandbox_root)
+            .await
+            .map_err(|e| format!("Register tools: {e}"))?;
     }
     let history_snapshot = {
         let hist = agent.history.lock().await;

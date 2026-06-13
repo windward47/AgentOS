@@ -74,9 +74,9 @@ async function handleRequest(req: { id: string; method: string; params?: Record<
             }
 
             case "register_tools": {
-                const p = (params ?? {}) as { tools?: Array<Record<string, unknown>> };
+                const p = (params ?? {}) as { tools?: Array<Record<string, unknown>>; sandbox_root?: string };
                 if (p.tools) {
-                    agentManager.registerToolsFromDefs(p.tools as any);
+                    agentManager.registerToolsFromDefs(p.tools as any, p.sandbox_root || ".");
                 }
                 send(id, "result", { ok: true });
                 break;
