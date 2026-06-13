@@ -546,6 +546,9 @@ export class AgentManager {
                 } else if (event.type === "agent_end") {
                     unsubscribe();
                     const rawText = fullText || "(no response)";
+                    // Debug: check if LLM is producing think tags
+                    const hasThink = /<think>/i.test(rawText);
+                    process.stderr.write(`[sidecar] chat raw ${rawText.length}c hasThink=${hasThink} preview=${rawText.slice(0, 150)}\n`);
                     // Parse emotion + think tags
                     const { displayText, ttsText } = parseThinkTags(rawText);
                     const { cleanText, emotions } = parseEmotions(displayText);
