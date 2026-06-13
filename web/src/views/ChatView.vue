@@ -570,6 +570,8 @@ async function doBrowseScreenshot() {
           <p class="text-sm text-gray-400">Type or press {{ hotkey }} to speak</p>
         </div>
         <template v-for="(m, i) in messages" :key="i">
+          <!-- DEBUG role indicator -->
+          <div class="text-[9px] mb-0.5" :class="m.role === 'user' ? 'text-blue-300' : 'text-gray-300'">[{{i}}] {{m.role}}</div>
           <div v-if="m.role === 'user'" class="flex justify-end">
             <div class="max-w-[75%] rounded-2xl rounded-br-md bg-blue-500 text-white px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap">{{ m.content }}</div>
           </div>

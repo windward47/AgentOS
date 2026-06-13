@@ -13,6 +13,7 @@ export const useAppStore = defineStore('app', () => {
 
   function addMessage(msg: ChatMessage) {
     messages.value.push(msg)
+    console.log('[store] addMessage role=', msg.role, 'count=', messages.value.length, 'allRoles=', messages.value.map(m => m.role))
   }
 
   function clearMessages() {
