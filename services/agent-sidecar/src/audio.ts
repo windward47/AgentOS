@@ -158,7 +158,7 @@ export async function transcribeLocal(audio: number[]): Promise<string> {
 }
 
 export async function synthesizeLocal(text: string, voice: string): Promise<number[]> {
-    const resp = await fetch("http://localhost:50000/v1/audio/speech", {
+    const resp = await fetch("http://localhost:50002/v1/audio/speech", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: "edge-tts", input: text, voice }),

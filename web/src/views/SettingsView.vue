@@ -85,7 +85,7 @@ async function detectModels(kind: 'llm' | 'asr' | 'tts') {
 const PRESET_URLS: Record<string, Record<string, string>> = {
   llm: { siliconflow: 'https://api.siliconflow.cn/v1', xiaomi: 'https://token-plan-cn.xiaomimimo.com/v1' },
   asr: { xiaomi: 'https://token-plan-cn.xiaomimimo.com/v1', local_funasr: 'http://localhost:8000/v1' },
-  tts: { xiaomi: 'https://token-plan-cn.xiaomimimo.com/v1', local_cosyvoice: 'http://localhost:50000/v1' },
+  tts: { xiaomi: 'https://token-plan-cn.xiaomimimo.com/v1', local_cosyvoice: 'http://localhost:50002/v1' },
 }
 const PRESET_PROVIDERS: Record<string, string[]> = {
   llm: ['ollama', 'openai', 'local'],
