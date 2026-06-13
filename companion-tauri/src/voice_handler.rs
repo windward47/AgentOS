@@ -254,15 +254,11 @@ pub fn build_global_asr_engines(
     let mut engines: HashMap<String, Box<dyn AsrProvider + Send + Sync>> = HashMap::new();
     let api_token = resolve_provider_key(&cfg.asr, &cfg.default_api_key);
 
-    // Mimo ASR (Xiaomi)
+    // Mimo ASR (Xiaomi) — always use Xiaomi URL for global hotkeys
     if !api_token.is_empty() {
-        let base = cfg
-            .asr
-            .url
-            .clone()
-            .unwrap_or_else(|| "https://token-plan-cn.xiaomimimo.com/v1".into());
-        let base_url = if base.contains("/chat/completions") { base } else { format!("{}/chat/completions", base.trim_end_matches('/')) };
-        log::info!("[GlobalVoice] Registering Mimo ASR engine");
+        // Global hotkey always uses Xiaomi cloud, not local provider
+        let base_url = "https://token-plan-cn.xiaomimimo.com/v1/chat/completions".to_string();
+        log::info!("[GlobalVoice] Registering Mimo ASR engine (cloud)");
         engines.insert("mimo".into(), Box::new(XiaomiAsr::with_url(&api_token, &base_url)));
     }
 
