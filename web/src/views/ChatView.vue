@@ -272,7 +272,6 @@ function chunkForTTS(text: string): string[] {
 }
 
 async function playTTS(text: string, msgIdx: number) {
-  console.log('[TTS] playTTS START text.len:', text.length, 'voice:', ttsVoice.value)
   if (playingId.value === msgIdx) { stopTTS(); return }
   stopTTS()
   playingId.value = msgIdx
@@ -283,8 +282,7 @@ async function playTTS(text: string, msgIdx: number) {
   try {
     // Synthesize first chunk immediately
     let pcm = await synthesizeAudio(chunks[0], ttsVoice.value)
-    console.log('[TTS] synthesized:', pcm?.length, 'samples')
-    if (!pcm || pcm.length === 0) { console.warn('[TTS] empty PCM'); playingId.value = null; return }
+    if (!pcm || pcm.length === 0) { playingId.value = null; return }
 
     // Start pre-fetching second chunk while playing first
     let nextPcm: number[] | null = null

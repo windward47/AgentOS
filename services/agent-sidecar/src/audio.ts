@@ -69,7 +69,8 @@ async function xiaomiChatCompletions(
     apiKey: string,
     baseUrl: string,
     messages: Array<{ role: string; content: unknown }>,
-): Promise<string> {
+    extra: Record<string, unknown> = {},
+): Promise<any> {
     const url = baseUrl.includes("/chat/completions") ? baseUrl : `${baseUrl.replace(/\/$/, "")}/chat/completions`;
     const resp = await fetch(url, {
         method: "POST",
@@ -78,17 +79,17 @@ async function xiaomiChatCompletions(
             Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-            model: "mimo-v2.5",
+            model: extra.model || "mimo-v2.5",
             messages,
             max_tokens: 4096,
+            ...extra,
         }),
     });
     if (!resp.ok) {
         const errText = await resp.text().catch(() => "");
         throw new Error(`HTTP ${resp.status}: ${errText.slice(0, 200)}`);
     }
-    const json: any = await resp.json();
-    return json.choices?.[0]?.message?.content ?? "";
+    return await resp.json();
 }
 
 // ── Public API ──────────────────────────────────────────────────────
@@ -99,7 +100,7 @@ export async function transcribeAudio(
     baseUrl: string = DEFAULT_BASE_URL,
 ): Promise<string> {
     const dataUrl = f32ToWavBase64(audio);
-    const result = await xiaomiChatCompletions(apiKey, baseUrl, [
+    const json = await xiaomiChatCompletions(apiKey, baseUrl, [
         {
             role: "user",
             content: [
@@ -108,7 +109,7 @@ export async function transcribeAudio(
             ],
         },
     ]);
-    return result.trim();
+    return (json.choices?.[0]?.message?.content ?? "").trim();
 }
 
 export async function synthesizeAudio(
@@ -117,16 +118,20 @@ export async function synthesizeAudio(
     apiKey: string,
     baseUrl: string = DEFAULT_BASE_URL,
 ): Promise<number[]> {
-    const result = await xiaomiChatCompletions(apiKey, baseUrl, [
-        {
-            role: "user",
-            content: `请用${voice}的声音朗读以下文本，只返回音频：${text}`,
-        },
-    ]);
-    // Response is base64 WAV data URL or raw base64
-    let b64 = result;
-    if (b64.startsWith("data:")) {
-        b64 = b64.split(",")[1] ?? b64;
+    const json = await xiaomiChatCompletions(apiKey, baseUrl, [
+        { role: "user", content: `请说：${text}` },
+        { role: "assistant", content: text },
+    ], {
+        model: "mimo-v2.5-tts",
+        modalities: ["text", "audio"],
+        audio: { voice, format: "wav" },
+        max_tokens: 500,
+    });
+    // TTS audio is in choices[0].message.audio.data (base64 WAV)
+    const b64: string = json.choices?.[0]?.message?.audio?.data ?? "";
+    if (!b64) {
+        process.stderr.write(`[audio] TTS response had no audio.data. Full: ${JSON.stringify(json).slice(0, 300)}\n`);
+        return [];
     }
     const wavBytes = Buffer.from(b64, "base64");
     const pcm = parseWavToF32(wavBytes);

@@ -85,7 +85,6 @@ async function handleRequest(req: { id: string; method: string; params?: Record<
                 try {
                     const apiKey = p.api_key || agentManager.getApiKeyValue();
                     const pcm = await synthesizeAudio(p.text, p.voice || "茉莉", apiKey, p.base_url);
-                    process.stderr.write(`[sidecar] TTS synthesized ${pcm.length} samples\n`);
                     send(id, "result", { pcm });
                 } catch (err: any) {
                     send(id, "error", { message: `TTS: ${err.message}` });
