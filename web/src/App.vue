@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useCompanion } from './composables/useCompanion'
 import { useRouter, useRoute } from 'vue-router'
 import ConversationList from './components/ConversationList.vue'
@@ -20,6 +20,11 @@ const isAvatarWindow = computed(() => route.path === '/avatar')
 
 onMounted(async () => {
   try { const c = await getConfig(); mode.value = c.system_mode } catch {}
+  // Poll for system_mode changes from Settings
+  const timer = setInterval(async () => {
+    try { const c = await getConfig(); mode.value = c.system_mode } catch {}
+  }, 2000)
+  onBeforeUnmount(() => clearInterval(timer))
 })
 
 function go(to: string) { router.push(to) }

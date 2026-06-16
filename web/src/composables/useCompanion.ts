@@ -75,6 +75,10 @@ export function useCompanion() {
     return invoke<boolean>('get_avatar_visible')
   }
 
+  function openFolder(path: string): Promise<void> {
+    return invoke('open_folder', { path })
+  }
+
   function setAvatarAlwaysOnTop(onTop: boolean): Promise<void> {
     return invoke('set_avatar_always_on_top', { onTop })
   }

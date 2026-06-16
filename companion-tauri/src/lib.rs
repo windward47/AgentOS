@@ -38,6 +38,7 @@ pub fn run() {
                 .level(log::LevelFilter::Info)
                 .build(),
         )
+        .plugin(tauri_plugin_shell::init())
         // ── Register domain states ──
         .manage(AgentState::new())
         .manage(VoiceState::new())
@@ -66,6 +67,7 @@ pub fn run() {
             state::get_lip_level,
             state::get_voice_state,
             state::get_cursor_pos,
+            state::open_folder,
             state::set_avatar_visible,
             state::list_live2d_models,
             state::set_live2d_model,

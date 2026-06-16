@@ -540,6 +540,17 @@ pub async fn reset_avatar_position(app: tauri::AppHandle) -> Result<(), String> 
 }
 
 #[tauri::command]
+pub async fn open_folder(path: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    { std::process::Command::new("explorer").arg(&path).spawn().map_err(|e| format!("{e}"))?; }
+    #[cfg(target_os = "macos")]
+    { std::process::Command::new("open").arg(&path).spawn().map_err(|e| format!("{e}"))?; }
+    #[cfg(target_os = "linux")]
+    { std::process::Command::new("xdg-open").arg(&path).spawn().map_err(|e| format!("{e}"))?; }
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn get_cursor_pos() -> Result<(i32, i32), String> {
     use enigo::{Enigo, Mouse, Settings};
     let enigo =

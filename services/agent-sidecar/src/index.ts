@@ -78,6 +78,7 @@ async function main(): Promise<void> {
     Bun.serve({
         port: PORT,
         hostname: "127.0.0.1",
+        idleTimeout: 120,
         async fetch(req) {
             const url = new URL(req.url);
             if (req.method !== "POST") return new Response("POST only", { status: 405 });
@@ -94,16 +95,17 @@ async function main(): Promise<void> {
                     const { readable, writable } = new TransformStream();
                     const writer = writable.getWriter();
                     const encoder = new TextEncoder();
-                    const write = (data: string) => { if (!closed) writer.write(encoder.encode(`data: ${data}\n\n`)); };
+                    const write = (data: string) => { try { if (!closed) writer.write(encoder.encode(`data: ${data}\n\n`)) } catch {} };
+                    const end = () => { try { closed = true; writer.close() } catch {} };
 
                     agentManager.chatStream(msg, hist, undefined, {
                         onToken: (t) => write(encodeEvent(body.id, "token", { token: t })),
                         onToolStart: (n) => write(encodeEvent(body.id, "tool_start", { name: n })),
                         onToolEnd: (n, r) => write(encodeEvent(body.id, "tool_end", { name: n, result: r })),
-                        onDone: (t) => { write(encodeEvent(body.id, "done", { text: t })); closed = true; writer.close(); },
-                        onError: (m) => { write(encodeError(body.id, m)); closed = true; writer.close(); },
+                        onDone: (t) => { write(encodeEvent(body.id, "done", { text: t })); end(); },
+                        onError: (m) => { write(encodeError(body.id, m)); end(); },
                     }).catch((err: any) => {
-                        if (!closed) { write(encodeError(body.id, err?.message || String(err))); closed = true; writer.close(); }
+                        if (!closed) { write(encodeError(body.id, err?.message || String(err))); end(); }
                     });
 
                     return new Response(readable, { headers: { "Content-Type": "text/event-stream" } });

@@ -3,7 +3,7 @@
  */
 import { Agent, type AgentEvent, type AgentTool } from "@oh-my-pi/pi-agent-core";
 import type { Api, Model } from "@oh-my-pi/pi-ai";
-import { buildPiModel, loadConfig, resolveModelRole, loadCompanionConfig, saveCompanionConfig, type CompanionConfig } from "./config";
+import { buildPiModel, loadCompanionConfig, saveCompanionConfig, type CompanionConfig } from "./config";
 import { sandboxResolve, hasDangerousChars, isHighRisk, logAudit } from "./sandbox";
 
 // ── DuckDuckGo web search (zero-config, always available) ─────────────
@@ -440,30 +440,22 @@ export class AgentManager {
 
     constructor() {
         this.companionConfig = loadCompanionConfig();
-        // Build model: CompanionConfig selects provider/model, omp models.yml provides API config
+        // Build LLM model from CompanionConfig (Settings → config.json)
         const llmCfg = this.companionConfig.llm;
-        const role = llmCfg.provider && llmCfg.model
-            ? `${llmCfg.provider}/${llmCfg.model}`
-            : (loadConfig().modelRoles?.default ?? "sensenova/mimo-v2.5");
-        const resolved = resolveModelRole(role);
-        if (resolved) {
-            const key = llmCfg.key || this.companionConfig.default_api_key;
-            if (key) resolved.providerConfig.apiKey = key;
-            if (llmCfg.url) resolved.providerConfig.baseUrl = llmCfg.url;
-            this.model = buildPiModel(resolved);
-            this.apiKey = resolved.providerConfig.apiKey ?? "";
-        } else {
-            // Fallback: omp models.yml missing — build from CompanionConfig
-            const provider = llmCfg.provider || "sensenova";
-            const modelId = llmCfg.model || "mimo-v2.5";
-            const key = llmCfg.key || this.companionConfig.default_api_key || "";
-            this.apiKey = key;
-            this.model = buildPiModel({
-                provider,
-                providerConfig: { baseUrl: llmCfg.url || "https://api.siliconflow.cn/v1", apiKey: key, api: "openai-completions", models: [{ id: modelId, name: modelId, input: ["text"], contextWindow: 32768, maxTokens: 16384 }] },
-                modelSpec: { id: modelId, name: modelId, input: ["text"], contextWindow: 32768, maxTokens: 16384 },
-            });
-        }
+        const provider = llmCfg.provider || "sensenova";
+        const modelId = llmCfg.model || "mimo-v2.5";
+        const baseUrl = llmCfg.url || "https://api.siliconflow.cn/v1";
+        this.apiKey = llmCfg.key || this.companionConfig.default_api_key || "";
+        this.model = buildPiModel({
+            provider,
+            providerConfig: {
+                baseUrl,
+                apiKey: this.apiKey,
+                api: "openai-completions",
+                models: [{ id: modelId, name: modelId, input: ["text"], contextWindow: 32768, maxTokens: 16384 }],
+            },
+            modelSpec: { id: modelId, name: modelId, input: ["text"], contextWindow: 32768, maxTokens: 16384 },
+        });
         this.convDir = join(homedir(), ".companion", "conversations");
         // Init Mnemopi memory (FTS-only, no embeddings needed)
         this.memory = new MemoryManager();
@@ -492,13 +484,28 @@ export class AgentManager {
             },
             getApiKey: () => this.apiKey,
         });
-        // All tools registered at startup — no runtime registration needed
+        // Tools: sandbox tools always available; unrestricted file tools only in system_mode
         const sandboxTools = makeSandboxTools(this.companionConfig.sandbox_path);
-        agent.setTools([
-            ...sandboxTools,
-            WEB_SEARCH_TOOL, WEB_FETCH_TOOL,
-            TOOL_READ, TOOL_WRITE, TOOL_SEARCH, TOOL_FIND, TOOL_BASH,
-            {
+        const tools: AgentTool[] = [...sandboxTools, WEB_SEARCH_TOOL, WEB_FETCH_TOOL];
+        if (this.companionConfig.system_mode) {
+            tools.push(TOOL_READ, TOOL_WRITE, TOOL_SEARCH, TOOL_FIND, TOOL_BASH);
+            tools.push({
+                name: "get_user_paths",
+                label: "Get User Paths",
+                description: "Returns the current user's home, desktop, documents and downloads paths. Use this first to find files.",
+                parameters: { type: "object", properties: {} },
+                execute: async () => {
+                    const home = homedir();
+                    return { content: [{ type: "text" as const, text: JSON.stringify({
+                        home,
+                        desktop: `${home}/Desktop`,
+                        documents: `${home}/Documents`,
+                        downloads: `${home}/Downloads`,
+                    }, null, 2) }] };
+                },
+            });
+        }
+        tools.push({
                 name: "memory_retain",
                 label: "Remember Fact",
                 description: "Store an important fact about the user or context into long-term memory. Use this when the user shares preferences, personal info, or important decisions. The fact should be a concise summary (one sentence).",
@@ -514,7 +521,8 @@ export class AgentManager {
                     return { content: [{ type: "text" as const, text: `✓ Remembered: ${params.fact}` }] };
                 },
             },
-        ]);
+        );
+        agent.setTools(tools);
         return agent;
     }
 
@@ -527,21 +535,16 @@ export class AgentManager {
         saveCompanionConfig(this.companionConfig);
         // Rebuild model if LLM config changed
         const llmCfg = this.companionConfig.llm;
-        const needRebuild = partial.llm || partial.custom_system_prompt !== undefined || partial.sandbox_path !== undefined || partial.default_api_key !== undefined;
+        const needRebuild = partial.llm || partial.custom_system_prompt !== undefined || partial.sandbox_path !== undefined || partial.default_api_key !== undefined || partial.system_mode !== undefined;
         if (needRebuild) {
             if (partial.llm || partial.default_api_key !== undefined) {
                 const cfg = this.companionConfig;
-                const role = cfg.llm.provider && cfg.llm.model
-                    ? `${cfg.llm.provider}/${cfg.llm.model}`
-                    : (loadConfig().modelRoles?.default ?? "sensenova/mimo-v2.5");
-                const resolved = resolveModelRole(role);
-                if (resolved) {
-                    const key = cfg.llm.key || cfg.default_api_key;
-                    if (key) resolved.providerConfig.apiKey = key;
-                    if (cfg.llm.url) resolved.providerConfig.baseUrl = cfg.llm.url;
-                    this.model = buildPiModel(resolved);
-                    this.apiKey = resolved.providerConfig.apiKey ?? "";
-                }
+                this.apiKey = cfg.llm.key || cfg.default_api_key || "";
+                this.model = buildPiModel({
+                    provider: cfg.llm.provider || "sensenova",
+                    providerConfig: { baseUrl: cfg.llm.url || "https://api.siliconflow.cn/v1", apiKey: this.apiKey, api: "openai-completions", models: [{ id: cfg.llm.model || "mimo-v2.5", name: cfg.llm.model || "mimo-v2.5", input: ["text"], contextWindow: 32768, maxTokens: 16384 }] },
+                    modelSpec: { id: cfg.llm.model || "mimo-v2.5", name: cfg.llm.model || "mimo-v2.5", input: ["text"], contextWindow: 32768, maxTokens: 16384 },
+                });
             }
             this.agent = this.createAgent();
         }
