@@ -35,11 +35,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::default()
-                .level(if cfg!(debug_assertions) {
-                    log::LevelFilter::Debug
-                } else {
-                    log::LevelFilter::Info
-                })
+                .level(log::LevelFilter::Info)
                 .build(),
         )
         // ── Register domain states ──
@@ -60,7 +56,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             state::chat,
             state::chat_stream,
-            state::agent_action,
             state::get_history,
             state::clear_history,
             state::transcribe_audio,
@@ -81,6 +76,14 @@ pub fn run() {
             state::browse_screenshot,
             state::get_audit_log,
             state::list_models,
+            state::list_conversations,
+            state::get_current_conversation,
+            state::create_conversation,
+            state::switch_conversation,
+            state::delete_conversation,
+            state::rename_conversation,
+            state::list_memories,
+            state::forget_memory,
         ])
         .setup(|app: &mut tauri::App| {
             // ---- Main window ----

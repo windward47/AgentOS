@@ -118,13 +118,18 @@ export async function synthesizeAudio(
     apiKey: string,
     baseUrl: string = DEFAULT_BASE_URL,
 ): Promise<number[]> {
+    // Validate voice — fall back to 茉莉 if invalid (e.g. model name accidentally set)
+    const VALID_VOICES = ["mimo_default", "冰糖", "茉莉", "苏打", "白桦", "Mia", "Chloe", "Milo", "Dean",
+        "zh-CN-XiaoxiaoNeural", "zh-CN-YunxiNeural", "zh-CN-YunjianNeural", "zh-CN-XiaoyiNeural"];
+    const safeVoice = VALID_VOICES.includes(voice) ? voice : "茉莉";
+    
     const json = await xiaomiChatCompletions(apiKey, baseUrl, [
         { role: "user", content: `请说：${text}` },
         { role: "assistant", content: text },
     ], {
         model: "mimo-v2.5-tts",
         modalities: ["text", "audio"],
-        audio: { voice, format: "wav" },
+        audio: { voice: safeVoice, format: "wav" },
         max_tokens: 500,
     });
     // TTS audio is in choices[0].message.audio.data (base64 WAV)

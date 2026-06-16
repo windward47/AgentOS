@@ -49,3 +49,12 @@ export interface CompanionConfig {
   custom_providers: ProviderConfig[]
   global_voice: GlobalVoiceConfig
 }
+
+/** Conversation metadata from sidecar */
+export interface ConversationMeta {
+  id: string
+  title: string
+  createdAt: string
+  updatedAt: string
+  messageCount: number
+}

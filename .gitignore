@@ -88,4 +88,6 @@ services/*
 web/node_modules
 web/public/live2d/models/
 
+# reference
 Open-LLM-VTuber-main/
+SonettoHere-main/

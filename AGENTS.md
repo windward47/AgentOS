@@ -268,8 +268,64 @@ Live2D 不应该和聊天 UI 挤在同一个 Vue 组件里。正确做法：
 | R4 | ✅ | Automated tests — Bun 16 + Rust 5 (sidecar) + Playwright 6 |
 | S3 | ✅ | Open-LLM-VTuber round 2: VU meter lip-sync, TTS preprocessor, streaming display, character presets |
 | S4 | ✅ | Local ASR (FunASR SenseVoice) + local TTS (Microsoft Edge via HTTP), provider-switchable in Settings |
+| **S5** | **✅** | **Session management (ConversationList sidebar, CRUD, auto-title) + Mnemopi persistent memory (recall+retain)** |
 | 3.x | 📋 | Emotion recognition + style system + MCP plugins + community store |
 | 4.x | 📋 | VR mode + cross-platform packaging + performance |
+| **5.x** | **📋** | **omp feature integration: Shell (pi-natives), file editing (hashline), model catalog (pi-catalog)** |
+
+## omp Feature Integration Plan
+
+Survey of `@oh-my-pi/*` packages (2026-06-13). Priority ordered by user impact.
+
+### P0 — `pi-natives` Shell (replace execSync)
+
+当前 Agent 的 `bash` 工具用 `execSync` — 同步阻塞、无实时输出、无法中断。
+`pi-natives` 的 `Shell` / `PtySession` 提供异步流式输出 + abort + 环境隔离。
+
+**涉及文件**: `services/agent-sidecar/src/agent.ts` (TOOL_BASH 改为 Shell 流式)
+**用户感知**: 命令输出实时流式渲染、可中途取消
+
+### P1 — `hashline` AI 文件编辑协议
+
+AI 提议改文件时，当前 `write` 工具直接覆盖，无预览、无确认、无冲突处理。
+`hashline` 的 `Patcher` 提供：解析 patch → 内存预览 diff → 用户确认 → 写入 + Recovery (3-way merge)。
+
+**涉及文件**: `services/agent-sidecar/src/agent.ts` (新增 hashline tool) + 前端 diff 预览组件
+**用户感知**: AI 改文件前看到 diff，有安全感
+
+### P2 — `pi-catalog` 模型选择 + 成本显示
+
+当前 Settings UI 可切换模型但信息有限。`pi-catalog` 有完整模型数据库：价格、上下文窗口、thinking 能力、兼容性解析。
+
+**涉及文件**: `web/src/views/SettingsView.vue` + `services/agent-sidecar/src/agent.ts` (model 查询)
+**用户感知**: 挑选模型时看到价格/能力，知道每次对话花了多少钱
+
+### P3 — `pi-utils` fetchWithRetry + 统一格式化
+
+所有 LLM API 调用应使用 `fetchWithRetry`（已处理各家限流格式）。`formatDuration/Bytes/Number` 等统一 UI 格式化。
+
+**涉及文件**: `services/agent-sidecar/src/agent.ts` + 各处格式化
+**用户感知**: 底层稳定性提升，UI 数字显示一致
+
+### P4 — `pi-natives` clipboard / code highlight / astGrep
+
+`copyToClipboard` → 代码块一键复制；`highlightCode` → 聊天中语法高亮；`astGrep` → 语义级代码搜索（替代当前纯文本 `search` 工具）。
+
+**涉及文件**: `web/src/components/MarkdownRenderer.vue` (highlight) + `services/agent-sidecar/src/agent.ts` (astGrep tool)
+**用户感知**: 锦上添花的工具能力
+
+### P5 — `omp-stats` Usage 仪表盘
+
+SQLite 聚合引擎 → 内嵌到 Vue UI 的 Usage 标签页（Token/花费/模型使用趋势）。
+
+**涉及文件**: 新 `web/src/views/UsageView.vue` + 侧边栏路由
+**用户感知**: 用量数据可视化
+
+### pi-ai (已在用) 未开发功能
+
+- **Auth Broker** — 集中管理多 Provider API Key（含加密缓存）
+- **Usage 计算器** — 按 Provider 计算单次对话成本
+- **Provider Metadata** — Settings UI 展示 Provider 图标/文档链接
 
 ## Technical Debt
 
@@ -288,6 +344,14 @@ Open issues found during code review (2026-06-13):
 6. **Think tags** — ✅ WON'T FIX: Nex-N2-Pro doesn't support formatting. Prompt removed.
 
 7. **web_search blocked in China** — ✅ FIXED: DuckDuckGo fallback to Bing HTML scraping with User-Agent spoofing.
+
+## Notes
+
+### 会话与记忆 (S5, 2026-06-13)
+- 会话持久化: `~/.companion/conversations/index.json` (元数据) + `{id}.json` (消息数组)
+- 持久记忆: Mnemopi (`@oh-my-pi/pi-mnemopi`) FTS-only, SQLite @ `~/.hermes/mnemopi/data/mnemopi.db`
+- 记忆机制: 每次对话前 recall → 注入 `<memories>` 提示，每次回复后 retain
+- 会话自动命名: 首条用户消息前 40 字符
 
 ## Notes
 

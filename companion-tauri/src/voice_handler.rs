@@ -40,7 +40,7 @@ pub async fn handle_voice_command(
 ) {
     match cmd {
         VoiceCommand::RecordStart => {
-            log::info!("[GlobalVoice] Push-to-talk: starting recording");
+            log::debug!("[GlobalVoice] Push-to-talk: starting recording");
             app.state::<VoiceState>().is_listening.store(true, Ordering::Release);
             if !capture_handle.start() {
                 log::error!("[GlobalVoice] Failed to start capture");
@@ -49,7 +49,7 @@ pub async fn handle_voice_command(
         }
 
         VoiceCommand::RecordStop => {
-            log::info!("[GlobalVoice] Push-to-talk: stopping recording");
+            log::debug!("[GlobalVoice] Push-to-talk: stopping recording");
             app.state::<VoiceState>().is_listening.store(false, Ordering::Release);
 
             let i16_samples = capture_handle.stop();
@@ -65,7 +65,7 @@ pub async fn handle_voice_command(
             );
 
             let engine_name = asr_engine_name.lock().unwrap().clone();
-            log::info!("[GlobalVoice] Running ASR with '{}'...", engine_name);
+            log::debug!("[GlobalVoice] Running ASR with '{}'...", engine_name);
 
             let engine = engines.get(&engine_name);
             let text = match engine {
@@ -86,17 +86,17 @@ pub async fn handle_voice_command(
                 log::warn!("[GlobalVoice] ASR returned empty text");
                 return;
             }
-            log::info!("[GlobalVoice] ASR result: {} chars", text.len());
+            log::debug!("[GlobalVoice] ASR result: {} chars", text.len());
 
             let mode = *inject_mode.lock().unwrap();
-            log::info!("[GlobalVoice] Injecting via {:?}", mode);
+            log::debug!("[GlobalVoice] Injecting via {:?}", mode);
             if let Err(e) = inject_text(&text, mode) {
                 log::error!("[GlobalVoice] Injection failed: {}", e);
             }
         }
 
         VoiceCommand::TtsTrigger => {
-            log::info!("[GlobalVoice] TTS trigger: reading selected text...");
+            log::debug!("[GlobalVoice] TTS trigger: reading selected text...");
 
             // Explicitly release Alt key so enigo's Ctrl+C simulation
             // doesn't become Alt+Ctrl+C due to the still-held Alt.
@@ -107,7 +107,7 @@ pub async fn handle_voice_command(
 
             let text = match text_reader::read_selected_text() {
                 Ok(t) if !t.is_empty() => {
-                    log::info!("[GlobalVoice] Got {} chars from selection", t.len());
+                    log::debug!("[GlobalVoice] Got {} chars from selection", t.len());
                     t
                 }
                 Ok(_) => {
@@ -157,7 +157,7 @@ pub async fn handle_voice_command(
                 }
             };
 
-            log::info!("[GlobalVoice] TTS synthesized {} f32 samples", pcm_f32.len());
+            log::debug!("[GlobalVoice] TTS synthesized {} f32 samples", pcm_f32.len());
             app.state::<VoiceState>().is_speaking.store(true, Ordering::Release);
 
             // Speed affects lip-sync timing only (not audio — no web audio API)
@@ -167,7 +167,7 @@ pub async fn handle_voice_command(
             let i16 = f32_to_i16(&pcm_f32);
             match pcm_i16_to_wav(&i16, 16000) {
                 Ok(wav) => {
-                    log::info!("[GlobalVoice] WAV encoded {} bytes, starting playback", wav.len());
+                    log::debug!("[GlobalVoice] WAV encoded {} bytes, starting playback", wav.len());
                     playback::play_wav_async(wav);
                 }
                 Err(e) => log::error!("[GlobalVoice] WAV encoding failed: {}", e),
@@ -175,7 +175,7 @@ pub async fn handle_voice_command(
         }
 
         VoiceCommand::SetAsrEngine(name) => {
-            log::info!("[GlobalVoice] Switching ASR engine to: {}", name);
+            log::debug!("[GlobalVoice] Switching ASR engine to: {}", name);
             {
                 let state = app.state::<ConfigState>();
                 let mut cfg = state.config.lock().await;
@@ -187,7 +187,7 @@ pub async fn handle_voice_command(
         }
 
         VoiceCommand::SetInjectMode(mode_str) => {
-            log::info!("[GlobalVoice] Switching inject mode to: {}", mode_str);
+            log::debug!("[GlobalVoice] Switching inject mode to: {}", mode_str);
             let mut guard = inject_mode.lock().unwrap();
             *guard = match mode_str.as_str() {
                 "clipboard" => InjectMode::Clipboard,
@@ -203,7 +203,7 @@ pub async fn handle_voice_command(
             let mut guard = inject_mode.lock().unwrap();
             *guard = guard.toggle();
             let mode_str = guard.as_str().to_string();
-            log::info!("[GlobalVoice] Toggled inject mode to: {}", mode_str);
+            log::debug!("[GlobalVoice] Toggled inject mode to: {}", mode_str);
             { let state = app.state::<ConfigState>(); let mut cfg = state.config.lock().await;
                 cfg.global_voice.inject_mode = mode_str;
                 state.save().await;
@@ -222,7 +222,7 @@ pub async fn handle_voice_command(
                 None => 0,
             };
             let next = names[next_idx].clone();
-            log::info!("[GlobalVoice] Cycling ASR engine to: {}", next);
+            log::debug!("[GlobalVoice] Cycling ASR engine to: {}", next);
             *guard = next.clone();
             { let state = app.state::<ConfigState>(); let mut cfg = state.config.lock().await;
                 cfg.global_voice.asr_engine = next;
@@ -283,13 +283,13 @@ pub fn build_global_asr_engines(
     if !api_token.is_empty() {
         // Global hotkey always uses Xiaomi cloud, not local provider
         let base_url = "https://token-plan-cn.xiaomimimo.com/v1/chat/completions".to_string();
-        log::info!("[GlobalVoice] Registering Mimo ASR engine (cloud)");
+        log::debug!("[GlobalVoice] Registering Mimo ASR engine (cloud)");
         engines.insert("mimo".into(), Box::new(XiaomiAsr::with_url(&api_token, &base_url)));
     }
 
     // OpenAI Whisper
     if !api_token.is_empty() {
-        log::info!("[GlobalVoice] Registering OpenAI Whisper engine");
+        log::debug!("[GlobalVoice] Registering OpenAI Whisper engine");
         engines.insert("openai".into(), Box::new(WhisperCloud::new(&api_token, "whisper-1")));
     }
 
@@ -297,7 +297,7 @@ pub fn build_global_asr_engines(
     if let Some(key) = &cfg.asr.key {
         if let Some(_model) = &cfg.asr.model {
             if let Some((appkey, token)) = key.split_once(':') {
-                log::info!("[GlobalVoice] Registering Aliyun ASR engine");
+                log::debug!("[GlobalVoice] Registering Aliyun ASR engine");
                 engines.insert("aliyun".into(), Box::new(AliyunAsr::new(appkey, token)));
             }
         }
@@ -316,7 +316,7 @@ pub fn build_global_asr_engines(
                 home.join(".companion").join("models").join("ggml-base.bin")
             });
         if binary_path.exists() && model_path.exists() {
-            log::info!("[GlobalVoice] Registering Whisper Local engine");
+            log::debug!("[GlobalVoice] Registering Whisper Local engine");
             engines.insert(
                 "whisper-local".into(),
                 Box::new(WhisperLocal::new(binary_path, model_path)),

@@ -1,11 +1,8 @@
-//! Bun Agent Sidecar client — communicates with the Bun sidecar process
-//! via stdin/stdout JSON-RPC (NDJSON protocol).
-//!
-//! Replaces the old `omp -p` subprocess approach with a persistent Bun
-//! sidecar powered by `@oh-my-pi/pi-agent-core`.
+//! Bun Agent Sidecar client — communicates via HTTP (localhost:PORT).
+//! POST /rpc for regular RPC, POST /chat_stream for streaming NDJSON.
 
-use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, Command, Stdio};
+use std::io::{BufRead, BufReader};
+use std::process::{Command, Stdio};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -14,7 +11,7 @@ use serde_json::Value;
 
 use super::{AgentEngine, AgentError, AgentResponse, AgentStreamEvent, ConversationMessage};
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(serde::Serialize, Debug)]
 struct JsonRpcRequest {
     id: String,
     method: String,
@@ -22,41 +19,17 @@ struct JsonRpcRequest {
     params: Option<Value>,
 }
 
-#[derive(serde::Deserialize, Debug)]
-struct JsonRpcResponse {
-    id: String,
-    #[serde(rename = "type")]
-    r#type: String,
-    result: Option<Value>,
-    event: Option<String>,
-    data: Option<Value>,
-    error: Option<JsonRpcError>,
-}
-
-#[derive(serde::Deserialize, Debug)]
-#[allow(dead_code)]
-struct JsonRpcError {
-    message: String,
-    code: Option<i64>,
-}
-
 pub struct OmpAgentSidecar {
     bun_binary: String,
     sidecar_script: String,
-    process: Arc<Mutex<Option<SidecarProcess>>>,
-    model_info: Arc<Mutex<Option<Value>>>,
-}
-
-#[allow(dead_code)]
-struct SidecarProcess {
-    child: Child,
-    stdin_writer: Box<dyn Write + Send>,
-    stdout_reader: BufReader<Box<dyn std::io::Read + Send>>,
-    next_id: u64,
+    port: Arc<Mutex<Option<u16>>>,
+    client: reqwest::Client,
+    next_id: Arc<Mutex<u64>>,
 }
 
 impl OmpAgentSidecar {
     const SIDECAR_SCRIPT_RELATIVE: &str = "services/agent-sidecar/src/index.ts";
+    const DEFAULT_PORT: u16 = 9876;
 
     #[cfg(debug_assertions)]
     fn project_root() -> std::path::PathBuf {
@@ -67,498 +40,171 @@ impl OmpAgentSidecar {
 
     #[cfg(not(debug_assertions))]
     fn project_root() -> std::path::PathBuf {
-        std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-            .unwrap_or_else(|| std::path::PathBuf::from("."))
+        std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.to_path_buf())).unwrap_or_default()
     }
 
     fn resolve_bun() -> String {
-        #[cfg(target_os = "windows")]
-        {
-            let candidates = [
-                format!(r"{}\npm\bun.cmd", std::env::var("APPDATA").unwrap_or_default()),
-                format!(r"{}\bun\bin\bun.exe", std::env::var("USERPROFILE").unwrap_or_default()),
-                "bun.cmd".to_string(),
-                "bun".to_string(),
-            ];
-            for path in &candidates {
-                if std::path::Path::new(path).exists() {
-                    log::info!("found bun at: {path}");
-                    return path.clone();
-                }
+        #[cfg(target_os = "windows")] {
+            for p in &[format!(r"{}\npm\bun.cmd", std::env::var("APPDATA").unwrap_or_default()), "bun.cmd".into(), "bun".into()] {
+                if std::path::Path::new(p).exists() { return p.clone(); }
             }
         }
-        #[cfg(not(target_os = "windows"))]
-        {
-            let candidates = [
-                std::env::var("HOME").unwrap_or_default() + "/.bun/bin/bun",
-                "/usr/local/bin/bun",
-                "/opt/homebrew/bin/bun",
-                "bun",
-            ];
-            for path in &candidates {
-                if std::path::Path::new(path).exists() {
-                    log::info!("found bun at: {path}");
-                    return path.to_string();
-                }
-            }
-        }
-        log::info!("bun not found at known paths; trying PATH lookup");
-        "bun".to_string()
+        "bun".into()
     }
 
     pub fn new() -> Self {
-        let bun = Self::resolve_bun();
-        let script = Self::project_root().join(Self::SIDECAR_SCRIPT_RELATIVE);
-        log::info!("Agent sidecar script: {}", script.display());
         Self {
-            bun_binary: bun,
-            sidecar_script: script.to_string_lossy().to_string(),
-            process: Arc::new(Mutex::new(None)),
-            model_info: Arc::new(Mutex::new(None)),
+            bun_binary: Self::resolve_bun(),
+            sidecar_script: Self::project_root().join(Self::SIDECAR_SCRIPT_RELATIVE).to_string_lossy().to_string(),
+            port: Arc::new(Mutex::new(None)),
+            client: reqwest::Client::new(),
+            next_id: Arc::new(Mutex::new(0)),
         }
+    }
+
+    fn base_url(&self) -> String {
+        let port = self.port.try_lock().ok().and_then(|g| *g).unwrap_or(Self::DEFAULT_PORT);
+        format!("http://127.0.0.1:{}", port)
     }
 
     pub async fn spawn(&self) -> Result<(), AgentError> {
-        if !std::path::Path::new(&self.sidecar_script).exists() {
-            return Err(AgentError::SubprocessCrashed(
-                format!("Sidecar not found: {}", self.sidecar_script)
+        let mut port_guard = self.port.lock().await;
+        if port_guard.is_some() { return Ok(()); }
+
+        let script = &self.sidecar_script;
+        if !std::path::Path::new(script).exists() {
+            return Err(AgentError::SubprocessCrashed(format!("Sidecar not found: {script}")));
+        }
+
+        let mut child = Command::new(&self.bun_binary).arg("run").arg(script)
+            .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::inherit())
+            .spawn().map_err(|e| AgentError::SubprocessCrashed(format!("Spawn: {e}")))?;
+
+        let stdout = child.stdout.take().ok_or(AgentError::SubprocessCrashed("No stdout".into()))?;
+        let mut reader = BufReader::new(stdout);
+        let mut port_line = String::new();
+        reader.read_line(&mut port_line).map_err(|e| AgentError::SubprocessCrashed(format!("Read port: {e}")))?;
+        let port: u16 = port_line.trim().parse().map_err(|_| AgentError::SubprocessCrashed("Parse port".into()))?;
+
+        *port_guard = Some(port);
+        log::info!("Agent sidecar spawned on port {port}");
+        Ok(())
+    }
+
+    pub async fn is_running(&self) -> bool { self.port.lock().await.is_some() }
+
+    async fn next_id_val(&self) -> u64 { let mut g = self.next_id.lock().await; let id = *g; *g += 1; id }
+
+    async fn rpc(&self, method: &str, params: Option<Value>) -> Result<Value, AgentError> {
+        let id = format!("r{}", self.next_id_val().await);
+        let req = JsonRpcRequest { id, method: method.to_string(), params };
+        let url = format!("{}/rpc", self.base_url());
+        let resp = self.client.post(&url).json(&req).send().await
+            .map_err(|e| AgentError::SubprocessCrashed(format!("HTTP: {e}")))?;
+        let body: Value = resp.json().await
+            .map_err(|e| AgentError::RpcError(format!("Parse: {e}")))?;
+        if body.get("type").and_then(|v| v.as_str()) == Some("error") {
+            return Err(AgentError::AgentReturnedError(
+                body.get("error").and_then(|e| e.get("message")).and_then(|v| v.as_str()).unwrap_or("Unknown").into()
             ));
         }
-
-        let mut child = Command::new(&self.bun_binary)
-            .arg("run")
-            .arg(&self.sidecar_script)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| AgentError::SubprocessCrashed(
-                format!("Spawn sidecar: {e}")
-            ))?;
-
-        let stdin = child.stdin.take().ok_or_else(|| {
-            AgentError::SubprocessCrashed("No sidecar stdin".into())
-        })?;
-
-        let stdout = child.stdout.take().ok_or_else(|| {
-            AgentError::SubprocessCrashed("No sidecar stdout".into())
-        })?;
-
-        let proc = SidecarProcess {
-            child,
-            stdin_writer: Box::new(stdin),
-            stdout_reader: BufReader::new(Box::new(stdout)),
-            next_id: 1,
-        };
-
-        *self.process.lock().await = Some(proc);
-        log::info!("Agent sidecar spawned");
-
-        // Ping to verify
-        let ping_result = self.send_request("ping", None).await?;
-        if let Some(info) = ping_result.get("model") {
-            *self.model_info.lock().await = Some(info.clone());
-        }
-
-        Ok(())
+        Ok(body.get("result").cloned().unwrap_or(Value::Null))
     }
 
-    async fn send_request(&self, method: &str, params: Option<Value>) -> Result<Value, AgentError> {
-        let mut guard = self.process.lock().await;
-        let proc = guard.as_mut().ok_or(AgentError::NotRunning)?;
-
-        let id = format!("r{}", proc.next_id);
-        proc.next_id += 1;
-
-        let request = JsonRpcRequest {
-            id: id.clone(),
-            method: method.to_string(),
-            params,
-        };
-
-        let json = serde_json::to_string(&request)
-            .map_err(|e| AgentError::RpcError(format!("Serialize: {e}")))?;
-
-        writeln!(proc.stdin_writer, "{json}")
-            .map_err(|e| AgentError::SubprocessCrashed(format!("Write: {e}")))?;
-        proc.stdin_writer.flush()
-            .map_err(|e| AgentError::SubprocessCrashed(format!("Flush: {e}")))?;
-
-        let mut line = String::new();
-        loop {
-            line.clear();
-            proc.stdout_reader.read_line(&mut line)
-                .map_err(|e| AgentError::SubprocessCrashed(format!("Read: {e}")))?;
-            if line.is_empty() {
-                return Err(AgentError::SubprocessCrashed("Sidecar ended".into()));
-            }
-            let trimmed = line.trim();
-            if trimmed.is_empty() { continue; }
-
-            let resp: JsonRpcResponse = serde_json::from_str(trimmed)
-                .map_err(|e| AgentError::RpcError(format!("Parse: {e}")))?;
-            if resp.id != id { continue; }
-
-            return match resp.r#type.as_str() {
-                "result" => Ok(resp.result.unwrap_or(Value::Null)),
-                "error" => {
-                    let msg = resp.error.map(|e| e.message).unwrap_or_else(|| "Unknown".into());
-                    Err(AgentError::AgentReturnedError(msg))
-                }
-                _ => continue,
-            };
-        }
-    }
-
-    #[allow(dead_code)]
-    async fn send_stream_request<F>(&self, method: &str, params: Option<Value>, mut on_event: F) -> Result<(), AgentError>
-    where F: FnMut(&str, &Value) {
-        let mut guard = self.process.lock().await;
-        let proc = guard.as_mut().ok_or(AgentError::NotRunning)?;
-
-        let id = format!("r{}", proc.next_id);
-        proc.next_id += 1;
-
-        let request = JsonRpcRequest {
-            id: id.clone(),
-            method: method.to_string(),
-            params,
-        };
-
-        let json = serde_json::to_string(&request)
-            .map_err(|e| AgentError::RpcError(format!("Serialize: {e}")))?;
-
-        writeln!(proc.stdin_writer, "{json}")
-            .map_err(|e| AgentError::SubprocessCrashed(format!("Write: {e}")))?;
-        proc.stdin_writer.flush()
-            .map_err(|e| AgentError::SubprocessCrashed(format!("Flush: {e}")))?;
-
-        let mut line = String::new();
-        loop {
-            line.clear();
-            proc.stdout_reader.read_line(&mut line)
-                .map_err(|e| AgentError::SubprocessCrashed(format!("Read: {e}")))?;
-            if line.is_empty() {
-                return Err(AgentError::SubprocessCrashed("Sidecar ended".into()));
-            }
-            let trimmed = line.trim();
-            if trimmed.is_empty() { continue; }
-
-            let resp: JsonRpcResponse = serde_json::from_str(trimmed)
-                .map_err(|e| AgentError::RpcError(format!("Parse: {e}")))?;
-            if resp.id != id { continue; }
-
-            match resp.r#type.as_str() {
-                "event" => {
-                    let name = match &resp.event { Some(n) => n.as_str(), None => continue };
-                    let data = match &resp.data { Some(d) => d.clone(), None => Value::Null };
-                    if name == "done" { return Ok(()) }
-                    on_event(name, &data);
-                }
-                "error" => {
-                    let msg = resp.error.map(|e| e.message).unwrap_or_else(|| "Stream error".into());
-                    return Err(AgentError::AgentReturnedError(msg));
-                }
-                _ => {}
-            }
-        }
-    }
-
-    pub async fn is_running(&self) -> bool {
-        self.process.lock().await.is_some()
-    }
-
-    pub async fn set_model(&self, _model: String) {
-        // The sidecar handles model switching via the config file.
-        // Full runtime model switching requires a restart of the sidecar,
-        // which we will implement in a future update.
-        log::info!("model switch to {} requested (sidecar restart needed)", _model);
-        // For now, the sidecar loads from ~/.omp/agent/config.yml on each `chat` call
-        // since it reads the default model role from there.
-    }
-
-    pub async fn get_model_info(&self) -> Option<Value> {
-        self.model_info.lock().await.clone()
-    }
-
-    /// Tell the sidecar to clear its conversation history.
-    pub async fn clear_history(&self) -> Result<(), AgentError> {
-        self.send_request("clear_history", None).await?;
-        Ok(())
-    }
-
-    /// Get conversation history from the sidecar.
-    pub async fn get_history(&self) -> Result<Value, AgentError> {
-        self.send_request("get_history", None).await
-    }
-
-    /// Get the full CompanionConfig from the sidecar (B1a: sidecar is config authority).
-    pub async fn get_config(&self) -> Result<Value, AgentError> {
-        self.send_request("get_config", None).await
-    }
-
-    /// Send updated config to the sidecar for persistence.
-    /// Returns the merged config back.
-    pub async fn update_config(&self, partial: Value) -> Result<Value, AgentError> {
-        self.send_request("update_config", Some(partial)).await
-    }
-
-    /// Send a unified agent action (B1d event bus).
-    pub async fn agent_action(&self, action_type: &str, payload: Value) -> Result<Value, AgentError> {
-        let params = serde_json::json!({ "type": action_type, "payload": payload });
-        self.send_request("agent_action", Some(params)).await
-    }
-
-    /// Stream chat tokens from the persistent sidecar.
-    /// Returns a receiver that yields (token: String) events, terminated by an empty string.
-    pub async fn chat_stream_tokens(&self, message: &str) -> Result<tokio::sync::mpsc::Receiver<String>, AgentError> {
-        let params = serde_json::json!({ "message": message, "history": [] });
+    pub async fn chat_stream_tokens(&self, message: &str, history: &[Value]) -> Result<tokio::sync::mpsc::Receiver<String>, AgentError> {
+        let id = format!("s{}", self.next_id_val().await);
+        let req = JsonRpcRequest { id: id.clone(), method: "chat_stream".to_string(), params: Some(serde_json::json!({ "message": message, "history": history })) };
         let (tx, rx) = tokio::sync::mpsc::channel(256);
-
-        let process = self.process.clone();
-        let request = JsonRpcRequest {
-            id: format!("s{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()),
-            method: "chat_stream".to_string(),
-            params: Some(params),
-        };
+        let url = format!("{}/chat_stream", self.base_url());
+        log::info!("chat_stream_tokens: POST {}", url);
+        let client = self.client.clone();
 
         tokio::spawn(async move {
-            let mut guard = process.lock().await;
-            let proc = match guard.as_mut() {
-                Some(p) => p,
-                None => { let _ = tx.send(String::new()).await; return; }
+            let resp = match client.post(&url).json(&req).send().await {
+                Ok(r) => r,
+                Err(e) => { let _ = tx.send(format!("\0⚠️ HTTP {}", e)).await; return; }
             };
-
-            let json = match serde_json::to_string(&request) {
-                Ok(j) => j,
-                Err(_) => { let _ = tx.send(String::new()).await; return; }
-            };
-
-            if writeln!(proc.stdin_writer, "{json}").is_err() || proc.stdin_writer.flush().is_err() {
-                let _ = tx.send(String::new()).await;
-                return;
-            }
-
-            let mut line = String::new();
-            loop {
-                line.clear();
-                if proc.stdout_reader.read_line(&mut line).is_err() || line.is_empty() {
-                    let _ = tx.send(String::new()).await;
-                    return;
-                }
-                let trimmed = line.trim();
-                if trimmed.is_empty() { continue; }
-
-                let resp: JsonRpcResponse = match serde_json::from_str(trimmed) {
-                    Ok(r) => r,
-                    Err(_) => continue,
+            let mut stream = resp.bytes_stream();
+            use futures_util::StreamExt;
+            while let Some(chunk) = stream.next().await {
+                let chunk = match chunk {
+                    Ok(c) => c,
+                    Err(_) => { let _ = tx.send("\0⚠️ Stream error".to_string()).await; return; }
                 };
-                if resp.id != request.id { continue; }
-
-                match resp.r#type.as_str() {
-                    "event" => match resp.event.as_deref() {
-                        Some("token") => {
-                            if let Some(t) = resp.data.as_ref().and_then(|d| d.get("token")).and_then(|v| v.as_str()) {
-                                if tx.send(t.to_string()).await.is_err() { return; }
+                let text = String::from_utf8_lossy(&chunk);
+                for line in text.lines() {
+                    let line = line.strip_prefix("data: ").unwrap_or(line);
+                    if line.is_empty() || line.starts_with(":") { continue; }
+                    let resp: Value = match serde_json::from_str(line) {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
+                    let typ = resp.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                    match typ {
+                        "event" => {
+                            let evt = resp.get("event").and_then(|v| v.as_str()).unwrap_or("");
+                            match evt {
+                                "token" => {
+                                    if let Some(t) = resp.get("data").and_then(|d| d.get("token")).and_then(|v| v.as_str()) {
+                                        if tx.send(t.to_string()).await.is_err() { return; }
+                                    }
+                                }
+                                "done" => {
+                                    let t = resp.get("data").and_then(|d| d.get("text")).and_then(|v| v.as_str()).unwrap_or("");
+                                    let _ = tx.send(format!("\0{}", t)).await;
+                                    return;
+                                }
+                                _ => {}
                             }
                         }
-                        Some("done") => { let _ = tx.send(String::new()).await; return; }
+                        "error" => {
+                            let msg = resp.get("error").and_then(|e| e.get("message")).and_then(|v| v.as_str()).unwrap_or("Error");
+                            let _ = tx.send(format!("\0⚠️ {}", msg)).await;
+                            return;
+                        }
                         _ => {}
-                    },
-                    "error" => { let _ = tx.send(String::new()).await; return; }
-                    _ => {}
+                    }
                 }
             }
+            let _ = tx.send("\0⚠️ Stream ended".to_string()).await;
         });
 
         Ok(rx)
     }
 
-    /// Transcribe audio via sidecar (B1d: ASR moved to sidecar).
+    // ── Passthrough RPC ──
+    pub async fn clear_history(&self) -> Result<(), AgentError> { self.rpc("clear_history", None).await.map(|_| ()) }
+    pub async fn get_history(&self) -> Result<Value, AgentError> { self.rpc("get_history", None).await }
+    pub async fn get_config(&self) -> Result<Value, AgentError> { self.rpc("get_config", None).await }
+    pub async fn update_config(&self, p: Value) -> Result<Value, AgentError> { self.rpc("update_config", Some(p)).await }
+    pub async fn list_conversations(&self) -> Result<Value, AgentError> { self.rpc("list_conversations", None).await }
+    pub async fn get_current_conversation(&self) -> Result<Value, AgentError> { self.rpc("get_current_conversation", None).await }
+    pub async fn create_conversation(&self, t: Option<&str>) -> Result<Value, AgentError> { self.rpc("create_conversation", t.map(|v| serde_json::json!({ "title": v }))).await }
+    pub async fn switch_conversation(&self, id: &str) -> Result<Value, AgentError> { self.rpc("switch_conversation", Some(serde_json::json!({ "id": id }))).await }
+    pub async fn delete_conversation(&self, id: &str) -> Result<Value, AgentError> { self.rpc("delete_conversation", Some(serde_json::json!({ "id": id }))).await }
+    pub async fn rename_conversation(&self, id: &str, title: &str) -> Result<Value, AgentError> { self.rpc("rename_conversation", Some(serde_json::json!({ "id": id, "title": title }))).await }
+    pub async fn list_memories(&self) -> Result<Value, AgentError> { self.rpc("list_memories", None).await }
+    pub async fn forget_memory(&self, id: &str) -> Result<Value, AgentError> { self.rpc("forget_memory", Some(serde_json::json!({ "id": id }))).await }
     pub async fn transcribe_audio(&self, audio: &[f32], api_key: &str, base_url: &str) -> Result<String, AgentError> {
-        let params = serde_json::json!({
-            "audio": audio,
-            "api_key": api_key,
-            "base_url": base_url,
-        });
-        let result = self.send_request("transcribe_audio", Some(params)).await?;
-        Ok(result.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string())
+        let r = self.rpc("transcribe_audio", Some(serde_json::json!({ "audio": audio, "api_key": api_key, "base_url": base_url }))).await?;
+        Ok(r.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string())
     }
-
-    /// Synthesize speech via sidecar (B1d: TTS moved to sidecar).
     pub async fn synthesize_audio(&self, text: &str, voice: &str, api_key: &str, base_url: &str) -> Result<Vec<f32>, AgentError> {
-        let params = serde_json::json!({
-            "text": text,
-            "voice": voice,
-            "api_key": api_key,
-            "base_url": base_url,
-        });
-        let result = self.send_request("synthesize_audio", Some(params)).await?;
-        let pcm: Vec<f32> = result.get("pcm")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect())
-            .unwrap_or_default();
-        Ok(pcm)
+        let r = self.rpc("synthesize_audio", Some(serde_json::json!({ "text": text, "voice": voice, "api_key": api_key, "base_url": base_url }))).await?;
+        Ok(r.get("pcm").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect()).unwrap_or_default())
     }
 }
 
 #[async_trait]
 impl AgentEngine for OmpAgentSidecar {
-    async fn chat(&self, message: &str, history: &[ConversationMessage], system_prompt: Option<&str>) -> Result<AgentResponse, AgentError> {
-        let history_json: Vec<Value> = history.iter().map(|msg| {
-            let role = match msg.role {
-                super::MessageRole::User => "user",
-                super::MessageRole::Assistant => "assistant",
-                super::MessageRole::System => "system",
-                super::MessageRole::Tool => "tool",
-            };
-            serde_json::json!({ "role": role, "content": msg.content })
-        }).collect();
-
-        let mut params = serde_json::json!({ "message": message, "history": history_json });
-        if let Some(sp) = system_prompt {
-            params["system_prompt"] = serde_json::Value::String(sp.to_string());
-        }
-        let result = self.send_request("chat", Some(params)).await?;
-        let text = result.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
-
-        // Parse emotions from sidecar response
-        let emotions: Vec<String> = result.get("emotions")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-            .unwrap_or_default();
-
-        // B1b: parse history from sidecar response
-        let mut conversation_history = Vec::new();
-        if let Some(arr) = result.get("history").and_then(|v| v.as_array()) {
-            for entry in arr {
-                let role = entry.get("role").and_then(|v| v.as_str()).unwrap_or("user");
-                let content = entry.get("content").and_then(|v| v.as_str()).unwrap_or("");
-                let msg_role = match role {
-                    "assistant" => super::MessageRole::Assistant,
-                    "system" => super::MessageRole::System,
-                    "tool" => super::MessageRole::Tool,
-                    _ => super::MessageRole::User,
-                };
-                conversation_history.push(ConversationMessage {
-                    role: msg_role,
-                    content: content.to_string(),
-                });
-            }
-        }
-
-        Ok(AgentResponse { text, history: conversation_history, emotions, tool_calls: vec![] })
+    async fn chat(&self, message: &str, history: &[ConversationMessage], sp: Option<&str>) -> Result<AgentResponse, AgentError> {
+        let hj: Vec<Value> = history.iter().map(|m| serde_json::json!({ "role": match m.role { super::MessageRole::User=>"user", super::MessageRole::Assistant=>"assistant", super::MessageRole::System=>"system", super::MessageRole::Tool=>"tool" }, "content": m.content })).collect();
+        let mut params = serde_json::json!({ "message": message, "history": hj });
+        if let Some(s) = sp { params["system_prompt"] = Value::String(s.to_string()); }
+        let r = self.rpc("chat", Some(params)).await?;
+        Ok(AgentResponse { text: r.get("text").and_then(|v| v.as_str()).unwrap_or("").into(), history: vec![], emotions: vec![], tool_calls: vec![] })
     }
-
-    async fn chat_stream(&self, message: &str, history: &[ConversationMessage]) -> Result<tokio::sync::mpsc::Receiver<AgentStreamEvent>, AgentError> {
-        let (tx, rx) = tokio::sync::mpsc::channel(128);
-
-        let history_json: Vec<Value> = history.iter().map(|msg| {
-            let role = match msg.role {
-                super::MessageRole::User => "user",
-                super::MessageRole::Assistant => "assistant",
-                super::MessageRole::System => "system",
-                super::MessageRole::Tool => "tool",
-            };
-            serde_json::json!({ "role": role, "content": msg.content })
-        }).collect();
-
-        let params = serde_json::json!({ "message": message, "history": history_json });
-        let bun = self.bun_binary.clone();
-        let script = self.sidecar_script.clone();
-
-        tokio::spawn(async move {
-            let child = match Command::new(&bun).arg("run").arg(&script)
-                .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()
-            {
-                Ok(c) => c,
-                Err(e) => { let _ = tx.send(AgentStreamEvent::Error(e.to_string())).await; return; }
-            };
-
-            let mut stdin = match child.stdin {
-                Some(s) => s,
-                None => { let _ = tx.send(AgentStreamEvent::Error("No stdin".into())).await; return; }
-            };
-
-            let stdout = match child.stdout {
-                Some(s) => s,
-                None => { let _ = tx.send(AgentStreamEvent::Error("No stdout".into())).await; return; }
-            };
-
-            let request = JsonRpcRequest {
-                id: "s1".to_string(),
-                method: "chat_stream".to_string(),
-                params: Some(params),
-            };
-
-            let json = match serde_json::to_string(&request) {
-                Ok(j) => j,
-                Err(e) => { let _ = tx.send(AgentStreamEvent::Error(e.to_string())).await; return; }
-            };
-
-            if writeln!(stdin, "{json}").is_err() || stdin.flush().is_err() {
-                let _ = tx.send(AgentStreamEvent::Error("Write to sidecar failed".into())).await;
-                return;
-            }
-
-            let mut reader = BufReader::new(stdout);
-            let mut line = String::new();
-
-            loop {
-                line.clear();
-                match reader.read_line(&mut line) {
-                    Ok(0) => { let _ = tx.send(AgentStreamEvent::Done).await; return; }
-                    Err(e) => { let _ = tx.send(AgentStreamEvent::Error(e.to_string())).await; return; }
-                    Ok(_) => {}
-                }
-
-                let trimmed = line.trim();
-                if trimmed.is_empty() { continue; }
-
-                let resp: JsonRpcResponse = match serde_json::from_str(trimmed) {
-                    Ok(r) => r,
-                    Err(_) => continue,
-                };
-
-                if resp.id != "s1" { continue; }
-
-                match resp.r#type.as_str() {
-                    "event" => match resp.event.as_deref() {
-                        Some("token") => {
-                            if let Some(t) = resp.data.as_ref().and_then(|d| d.get("token")).and_then(|v| v.as_str()) {
-                                let _ = tx.send(AgentStreamEvent::Token(t.to_string())).await;
-                            }
-                        }
-                        Some("tool_start") => {
-                            if let Some(n) = resp.data.as_ref().and_then(|d| d.get("name")).and_then(|v| v.as_str()) {
-                                let _ = tx.send(AgentStreamEvent::ToolStarted { name: n.to_string() }).await;
-                            }
-                        }
-                        Some("tool_end") => {
-                            let name = resp.data.as_ref().and_then(|d| d.get("name")).and_then(|v| v.as_str());
-                            let result = resp.data.as_ref().and_then(|d| d.get("result")).and_then(|v| v.as_str());
-                            if let Some(n) = name {
-                                let _ = tx.send(AgentStreamEvent::ToolCompleted {
-                                    name: n.to_string(),
-                                    result: result.unwrap_or("").to_string(),
-                                }).await;
-                            }
-                        }
-                        Some("done") => { let _ = tx.send(AgentStreamEvent::Done).await; return; }
-                        _ => {}
-                    },
-                    "error" => {
-                        let msg = resp.error.map(|e| e.message).unwrap_or_else(|| "Stream error".into());
-                        let _ = tx.send(AgentStreamEvent::Error(msg)).await;
-                        return;
-                    }
-                    _ => {}
-                }
-            }
-        });
-
-        Ok(rx)
+    async fn chat_stream(&self, _m: &str, _h: &[ConversationMessage]) -> Result<tokio::sync::mpsc::Receiver<AgentStreamEvent>, AgentError> {
+        Err(AgentError::NotRunning)
     }
 }

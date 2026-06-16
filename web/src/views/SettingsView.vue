@@ -5,10 +5,31 @@ import { useRouter } from 'vue-router'
 import type { CompanionConfig, ProviderConfig } from '../types/ipc'
 
 const router = useRouter()
-const { getConfig, updateConfig, listModels } = useCompanion()
+const { getConfig, updateConfig, listModels, listMemories, forgetMemory } = useCompanion()
 const config = ref<CompanionConfig | null>(null)
 const saving = ref(false)
 const saved = ref(false)
+
+// ── Memory management ──
+interface MemoryEntry { id: string; content: string; timestamp: string }
+const memories = ref<MemoryEntry[]>([])
+const loadingMemories = ref(false)
+
+async function loadMemories() {
+  loadingMemories.value = true
+  try {
+    const result = await listMemories()
+    memories.value = result.memories
+  } catch (e) { console.error('load memories:', e) }
+  finally { loadingMemories.value = false }
+}
+
+async function doForget(id: string) {
+  try {
+    await forgetMemory(id)
+    memories.value = memories.value.filter(m => m.id !== id)
+  } catch (e) { console.error('forget memory:', e) }
+}
 
 onMounted(async () => {
   // Show form immediately with defaults (avoid "Loading..." flash)
@@ -35,6 +56,7 @@ onMounted(async () => {
     onProviderChange('asr')
     onProviderChange('tts')
   }
+  loadMemories()
 })
 
 async function save() {
@@ -64,6 +86,7 @@ function savedProviderNames(kind: 'llm' | 'asr' | 'tts'): string[] {
 // ── Model detection (unified per kind) ──
 const detecting = ref({ llm: false, asr: false, tts: false })
 const modelLists = ref<Record<string, string[]>>({ llm: [], asr: [], tts: [] })
+const healthStatus = ref<Record<string, string>>({ llm: '', asr: '', tts: '' })
 
 function modelList(kind: string) { return modelLists.value[kind] ?? [] }
 
@@ -76,13 +99,13 @@ async function detectModels(kind: 'llm' | 'asr' | 'tts') {
   try {
     const models = await listModels(prov.url, prov.key || '')
     modelLists.value[kind] = models
+    healthStatus.value[kind] = models.length > 0 ? `✅ ${models.length} found` : '⚠️ 0 models'
     if (models.length > 0 && !prov.model) prov.model = models[0]
-  } catch (err: any) { modelLists.value[kind] = [String(err)] }
-  finally { detecting.value[kind] = false }
-  // Auto-select first detected model as default voice for TTS
-  if (kind === 'tts' && modelLists.value.tts.length > 0) {
-    config.value!.tts_voice = modelLists.value.tts[0]
+  } catch (err: any) {
+    modelLists.value[kind] = [String(err)]
+    healthStatus.value[kind] = `❌ ${String(err).slice(0, 80)}`
   }
+  finally { detecting.value[kind] = false }
 }
 
 // ── Provider UI helpers ──
@@ -206,6 +229,7 @@ function onProviderChange(kind: 'llm' | 'asr' | 'tts') {
                   <label class="block text-[11px] font-medium text-gray-600 mb-1">Model</label>
                   <div class="flex gap-2">
                     <button @click="detectModels(kind)" :disabled="detecting[kind]" class="shrink-0 text-xs px-3 py-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-40">{{ detecting[kind] ? 'Detecting…' : 'Detect' }}</button>
+                    <span v-if="healthStatus[kind]" class="text-[10px]" :class="healthStatus[kind].startsWith('✅') ? 'text-green-600' : healthStatus[kind].startsWith('⚠️') ? 'text-amber-600' : 'text-red-500'">{{ healthStatus[kind] }}</span>
                     <select v-if="modelList(kind).length" v-model="config[kind].model" class="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono">
                       <option value="">— select —</option>
                       <option v-for="m in modelList(kind)" :key="m" :value="m">{{ m }}</option>
@@ -296,6 +320,28 @@ function onProviderChange(kind: 'llm' | 'asr' | 'tts') {
         </div>
         <div class="p-5">
           <textarea v-model="config.custom_system_prompt" rows="4" placeholder="Optional — override the system prompt sent to the AI.&#10;Leave empty to use default." class="block w-full rounded-lg border border-gray-200 px-3.5 py-2.5 text-sm font-mono shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-colors resize-y" />
+        </div>
+      </section>
+
+      <!-- ── Memory ── -->
+      <section class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+          <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Memory ({{ memories.length }})</h2>
+          <button @click="loadMemories" :disabled="loadingMemories" class="text-xs text-blue-500 hover:text-blue-600 disabled:opacity-40">
+            {{ loadingMemories ? '...' : '↻ Refresh' }}
+          </button>
+        </div>
+        <div class="p-3 max-h-72 overflow-y-auto space-y-1">
+          <div v-if="memories.length === 0 && !loadingMemories" class="text-center py-6 text-xs text-gray-400">
+            No memories stored yet. They accumulate as you chat.
+          </div>
+          <div v-for="m in memories" :key="m.id" class="flex items-start gap-2 px-2 py-2 rounded-lg hover:bg-gray-50 group">
+            <div class="flex-1 min-w-0">
+              <p class="text-xs text-gray-700 leading-relaxed line-clamp-3">{{ m.content }}</p>
+              <p class="text-[10px] text-gray-400 mt-0.5">{{ new Date(m.timestamp).toLocaleString() }}</p>
+            </div>
+            <button @click="doForget(m.id)" class="shrink-0 opacity-0 group-hover:opacity-100 text-[10px] text-red-400 hover:text-red-600 px-1.5 py-0.5 rounded transition-opacity" title="Delete">✕</button>
+          </div>
         </div>
       </section>
 

@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useCompanion } from './composables/useCompanion'
 import { useRouter, useRoute } from 'vue-router'
+import ConversationList from './components/ConversationList.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -33,11 +34,20 @@ function go(to: string) { router.push(to) }
   <!-- Main window: sidebar + content -->
   <div v-else class="flex h-screen w-screen bg-white text-gray-900">
     <aside :class="['flex flex-col border-r border-gray-200 bg-gray-50 shrink-0 transition-all', collapsed ? 'w-14' : 'w-[220px]']">
+      <!-- Header -->
       <div class="flex items-center gap-2 px-4 h-14 border-b border-gray-200">
         <span class="text-lg">🤖</span>
         <span v-if="!collapsed" class="font-semibold text-sm">Companion</span>
       </div>
-      <nav class="flex-1 py-2 space-y-0.5 px-2">
+
+      <!-- Conversation list (only on chat page) -->
+      <ConversationList v-if="active === 'chat'" :collapsed="collapsed" class="flex-1 min-h-0" />
+
+      <!-- Space filler for non-chat pages -->
+      <div v-else class="flex-1" />
+
+      <!-- Nav links -->
+      <nav class="py-2 space-y-0.5 px-2 border-t border-gray-200">
         <button @click="go('/')"
           :class="['flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors',
                    active === 'chat' ? 'bg-white shadow-sm ring-1 ring-gray-200 text-gray-900 font-medium' : 'text-gray-600 hover:bg-white/60']">
@@ -57,6 +67,8 @@ function go(to: string) { router.push(to) }
           <span v-if="!collapsed">Settings</span>
         </button>
       </nav>
+
+      <!-- Bottom bar -->
       <div class="px-2 py-3 border-t border-gray-200 space-y-1">
         <div v-if="!collapsed" class="flex items-center gap-1.5 px-2 text-[11px]" :class="mode ? 'text-orange-500' : 'text-green-600'">
           <span class="w-1.5 h-1.5 rounded-full" :class="mode ? 'bg-orange-500' : 'bg-green-500'" />

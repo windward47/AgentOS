@@ -4,7 +4,7 @@
 //! each Tauri command depends on exactly what it needs — no more, no less.
 
 use companion_core::agent::omp_sidecar::OmpAgentSidecar;
-use companion_core::agent::{AgentEngine, ConversationMessage, MessageRole, provider_to_model};
+use companion_core::agent::{AgentEngine, ConversationMessage, MessageRole};
 use companion_core::config::{CompanionConfig, ConfigManager, resolve_provider_key, ensure_chat_completions_url};
 use companion_core::downloader::{download_model, DownloadProgress};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -96,58 +96,21 @@ impl ConfigState {
 // Tauri IPC Commands
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Shared core: spawn sidecar, chat, sync config on first spawn.
-async fn do_chat(
-    agent: &AgentState,
-    config: &ConfigState,
-    message: String,
-    app: &tauri::AppHandle,
-) -> Result<String, String> {
-    if !agent.agent.is_running().await {
-        agent.agent.spawn().await
-            .map_err(|e| format!("Sidecar spawn failed: {e}"))?;
-        // B1a: sync config from sidecar (now the single source of truth)
-        config.sync_from_sidecar(&agent.agent).await?;
-    }
-    let system_prompt = config.config.lock().await.custom_system_prompt.clone();
-    // B1b: history is managed by sidecar; pass empty (sidecar has its own)
-    let response = agent.agent.chat(&message, &[], Some(&system_prompt)).await
-        .map_err(|e| format!("Agent error: {e}"))?;
-    // Emit emotions to avatar window for Live2D expression
-    if !response.emotions.is_empty() {
-        let _ = app.emit("emotion_event", serde_json::json!({
-            "expressions": response.emotions,
-        }));
-    }
-    Ok(response.text)
-}
-
+/// Simple non-streaming chat — one request, one response.
 #[tauri::command]
 pub async fn chat(
     agent: tauri::State<'_, AgentState>,
     config: tauri::State<'_, ConfigState>,
-    app: tauri::AppHandle,
     message: String,
 ) -> Result<String, String> {
-    do_chat(&agent, &config, message, &app).await
-}
-
-/// B1d: unified agent action — routes to sidecar, single IPC for all agent operations.
-#[tauri::command]
-pub async fn agent_action(
-    agent: tauri::State<'_, AgentState>,
-    config: tauri::State<'_, ConfigState>,
-    action_type: String,
-    payload: serde_json::Value,
-) -> Result<serde_json::Value, String> {
     if !agent.agent.is_running().await {
-        agent.agent.spawn().await
-            .map_err(|e| format!("Sidecar spawn failed: {e}"))?;
+        agent.agent.spawn().await.map_err(|e| format!("spawn: {e}"))?;
         config.sync_from_sidecar(&agent.agent).await?;
     }
-    let result = agent.agent.agent_action(&action_type, payload).await
-        .map_err(|e| format!("agent_action: {e}"))?;
-    Ok(result)
+    let system_prompt = config.config.lock().await.custom_system_prompt.clone();
+    let response = agent.agent.chat(&message, &[], Some(&system_prompt)).await
+        .map_err(|e| format!("Agent error: {e}"))?;
+    Ok(response.text)
 }
 
 /// S3.3: Stream chat tokens to frontend via Tauri events.
@@ -157,24 +120,32 @@ pub async fn chat_stream(
     agent: tauri::State<'_, AgentState>,
     config: tauri::State<'_, ConfigState>,
     message: String,
+    history: Option<Vec<serde_json::Value>>,
 ) -> Result<(), String> {
+    log::info!("chat_stream: \"{}\"", &message[..message.len().min(30)]);
     if !agent.agent.is_running().await {
+        log::info!("chat_stream: spawning sidecar...");
         agent.agent.spawn().await
             .map_err(|e| format!("spawn: {e}"))?;
         config.sync_from_sidecar(&agent.agent).await?;
     }
-    let mut rx = agent.agent.chat_stream_tokens(&message).await
+    let hist = history.unwrap_or_default();
+    let mut rx = agent.agent.chat_stream_tokens(&message, &hist).await
         .map_err(|e| format!("stream: {e}"))?;
+    log::info!("chat_stream: RPC sent, waiting for tokens...");
 
     let app2 = app.clone();
     tokio::spawn(async move {
         while let Some(token) = rx.recv().await {
-            if token.is_empty() {
-                let _ = app2.emit("chat_token", serde_json::json!({ "done": true }));
-                break;
+            if token.starts_with('\0') {
+                let text = &token[1..];
+                let _ = app2.emit("chat_token", serde_json::json!({ "done": true, "token": text }));
+                return;
             }
             let _ = app2.emit("chat_token", serde_json::json!({ "token": token }));
         }
+        // Channel closed without done — sidecar died
+        let _ = app2.emit("chat_token", serde_json::json!({ "done": true, "token": "⚠️ Connection lost. The AI engine may have crashed." }));
     });
 
     Ok(())
@@ -210,6 +181,120 @@ pub async fn clear_history(agent: tauri::State<'_, AgentState>) -> Result<(), St
         agent.agent.clear_history().await.map_err(|e| format!("clear history: {e}"))?;
     }
     Ok(())
+}
+
+// ── Session / Conversation management ──────────────────────────────
+
+#[tauri::command]
+pub async fn list_conversations(
+    agent: tauri::State<'_, AgentState>,
+    config: tauri::State<'_, ConfigState>,
+) -> Result<serde_json::Value, String> {
+    if !agent.agent.is_running().await {
+        agent.agent.spawn().await.map_err(|e| format!("spawn: {e}"))?;
+        config.sync_from_sidecar(&agent.agent).await?;
+    }
+    agent.agent.list_conversations().await
+        .map_err(|e| format!("list conversations: {e}"))
+}
+
+#[tauri::command]
+pub async fn get_current_conversation(
+    agent: tauri::State<'_, AgentState>,
+    config: tauri::State<'_, ConfigState>,
+) -> Result<serde_json::Value, String> {
+    if !agent.agent.is_running().await {
+        agent.agent.spawn().await.map_err(|e| format!("spawn: {e}"))?;
+        config.sync_from_sidecar(&agent.agent).await?;
+    }
+    agent.agent.get_current_conversation().await
+        .map_err(|e| format!("get current conversation: {e}"))
+}
+
+#[tauri::command]
+pub async fn create_conversation(
+    agent: tauri::State<'_, AgentState>,
+    config: tauri::State<'_, ConfigState>,
+    title: Option<String>,
+) -> Result<serde_json::Value, String> {
+    if !agent.agent.is_running().await {
+        agent.agent.spawn().await.map_err(|e| format!("spawn: {e}"))?;
+        config.sync_from_sidecar(&agent.agent).await?;
+    }
+    agent.agent.create_conversation(title.as_deref()).await
+        .map_err(|e| format!("create conversation: {e}"))
+}
+
+#[tauri::command]
+pub async fn switch_conversation(
+    agent: tauri::State<'_, AgentState>,
+    config: tauri::State<'_, ConfigState>,
+    id: String,
+) -> Result<serde_json::Value, String> {
+    if !agent.agent.is_running().await {
+        agent.agent.spawn().await.map_err(|e| format!("spawn: {e}"))?;
+        config.sync_from_sidecar(&agent.agent).await?;
+    }
+    agent.agent.switch_conversation(&id).await
+        .map_err(|e| format!("switch conversation: {e}"))
+}
+
+#[tauri::command]
+pub async fn delete_conversation(
+    agent: tauri::State<'_, AgentState>,
+    config: tauri::State<'_, ConfigState>,
+    id: String,
+) -> Result<serde_json::Value, String> {
+    if !agent.agent.is_running().await {
+        agent.agent.spawn().await.map_err(|e| format!("spawn: {e}"))?;
+        config.sync_from_sidecar(&agent.agent).await?;
+    }
+    agent.agent.delete_conversation(&id).await
+        .map_err(|e| format!("delete conversation: {e}"))
+}
+
+#[tauri::command]
+pub async fn rename_conversation(
+    agent: tauri::State<'_, AgentState>,
+    config: tauri::State<'_, ConfigState>,
+    id: String,
+    title: String,
+) -> Result<serde_json::Value, String> {
+    if !agent.agent.is_running().await {
+        agent.agent.spawn().await.map_err(|e| format!("spawn: {e}"))?;
+        config.sync_from_sidecar(&agent.agent).await?;
+    }
+    agent.agent.rename_conversation(&id, &title).await
+        .map_err(|e| format!("rename conversation: {e}"))
+}
+
+// ── Memory management ──────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn list_memories(
+    agent: tauri::State<'_, AgentState>,
+    config: tauri::State<'_, ConfigState>,
+) -> Result<serde_json::Value, String> {
+    if !agent.agent.is_running().await {
+        agent.agent.spawn().await.map_err(|e| format!("spawn: {e}"))?;
+        config.sync_from_sidecar(&agent.agent).await?;
+    }
+    agent.agent.list_memories().await
+        .map_err(|e| format!("list memories: {e}"))
+}
+
+#[tauri::command]
+pub async fn forget_memory(
+    agent: tauri::State<'_, AgentState>,
+    config: tauri::State<'_, ConfigState>,
+    id: String,
+) -> Result<serde_json::Value, String> {
+    if !agent.agent.is_running().await {
+        agent.agent.spawn().await.map_err(|e| format!("spawn: {e}"))?;
+        config.sync_from_sidecar(&agent.agent).await?;
+    }
+    agent.agent.forget_memory(&id).await
+        .map_err(|e| format!("forget memory: {e}"))
 }
 
 #[tauri::command]
@@ -273,8 +358,6 @@ pub async fn update_config(
     let _was_mode = config
         .system_mode
         .swap(new_config.system_mode, Ordering::SeqCst);
-    let model = provider_to_model(&new_config.llm_provider).to_string();
-    agent.agent.set_model(model).await;
     Ok(())
 }
 
