@@ -33,7 +33,6 @@ watch([ttsAuto, ttsVoice, ttsSpeed], async () => {
 })
 
 // ── Single streaming listener (registered in onMounted, cleaned up on unmount) ──
-let sendResolve: (() => void) | null = null
 let unlistenChatToken: (() => void) | null = null
 let mountCancelled = false
 
@@ -47,7 +46,6 @@ function handleChatToken(evt: { payload: { token?: string; done?: boolean } }) {
         if (msgs[i].role === 'assistant' && !msgs[i].content) { msgs[i].content = p.token; break }
       }
     }
-    if (sendResolve) { sendResolve(); sendResolve = null }
     // Auto-TTS on done
     if (ttsAuto.value) {
       const idx = store.messages.length - 1
@@ -78,10 +76,7 @@ function send() {
   store.addMessage({ role: 'assistant', content: '' })
 
   const history = store.messages.slice(0, -2).map(m => ({ role: m.role, content: m.content }))
-  // Fire and await done via shared promise
-  new Promise<void>((resolve) => { sendResolve = resolve }).then(() => {})
   chatStream(msg, history).catch((err: any) => {
-    if (sendResolve) { sendResolve(); sendResolve = null }
     store.setSending(false)
     store.addMessage({ role: 'assistant', content: `⚠️ ${err}` })
   })
