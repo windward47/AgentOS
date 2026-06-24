@@ -1,7 +1,8 @@
 //! Domain-level application states for Tauri's managed state system.
+//! Domain states + IPC commands for Companion.
 //!
-//! Split from a monolithic `AppState` into focused domain states so that
-//! each Tauri command depends on exactly what it needs — no more, no less.
+//! States: AgentState, VoiceState, ConfigState
+//! Commands are grouped by domain in submodules.
 
 use companion_core::agent::omp_sidecar::OmpAgentSidecar;
 use companion_core::agent::{AgentEngine, ConversationMessage, MessageRole};
@@ -14,22 +15,18 @@ use tauri::{Manager, Emitter};
 
 // ── AgentState ──────────────────────────────────────────────────────────
 
-/// Manages the agent engine and conversation history.
 pub struct AgentState {
     pub agent: Arc<OmpAgentSidecar>,
 }
 
 impl AgentState {
     pub fn new() -> Self {
-        Self {
-            agent: Arc::new(OmpAgentSidecar::new()),
-        }
+        Self { agent: Arc::new(OmpAgentSidecar::new()) }
     }
 }
 
 // ── VoiceState ──────────────────────────────────────────────────────────
 
-/// Tracks the current audio/voice state for Live2D animation.
 pub struct VoiceState {
     pub is_speaking: AtomicBool,
     pub is_listening: AtomicBool,
@@ -48,7 +45,6 @@ impl VoiceState {
 
 // ── ConfigState ──────────────────────────────────────────────────────────
 
-/// Application configuration with persistence.
 pub struct ConfigState {
     pub config: Arc<Mutex<CompanionConfig>>,
     pub config_manager: ConfigManager,
@@ -71,7 +67,6 @@ impl ConfigState {
         self.config_manager.save(&config).ok();
     }
 
-    /// Pull config from sidecar (B1a: sidecar owns config.json).
     pub async fn sync_from_sidecar(&self, agent: &OmpAgentSidecar) -> Result<(), String> {
         let val = agent.get_config().await.map_err(|e| format!("get_config RPC: {e}"))?;
         let cfg: CompanionConfig = serde_json::from_value(val)
@@ -81,7 +76,6 @@ impl ConfigState {
         Ok(())
     }
 
-    /// Push config update to sidecar, get merged result back.
     pub async fn push_to_sidecar(&self, agent: &OmpAgentSidecar, partial: serde_json::Value) -> Result<(), String> {
         let val = agent.update_config(partial).await.map_err(|e| format!("update_config RPC: {e}"))?;
         let cfg: CompanionConfig = serde_json::from_value(val)
@@ -91,6 +85,8 @@ impl ConfigState {
         Ok(())
     }
 }
+
+// ── IPC Commands (inline — see section headers for organization) ────────
 
 // ═══════════════════════════════════════════════════════════════════════
 // Tauri IPC Commands
