@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useCompanion } from '../composables/useCompanion'
 import { useAppStore } from '../stores/app'
 import { useTtsPlayer } from '../composables/useTtsPlayer'
@@ -32,39 +32,40 @@ watch([ttsAuto, ttsVoice, ttsSpeed], async () => {
   try { const c = await getConfig(); c.tts_auto_play = ttsAuto.value; c.tts_voice = ttsVoice.value; c.tts_speed = ttsSpeed.value; await updateConfig(c) } catch {}
 })
 
-// ── Single streaming listener ──
+// ── Single streaming listener (registered in onMounted, cleaned up on unmount) ──
 let sendResolve: (() => void) | null = null
-let _l = false; if (!_l) { _l = true; import('@tauri-apps/api/event').then(m => {
-  m.listen<{ token?: string; done?: boolean }>('chat_token', (evt) => {
-    const p = evt.payload
-    if (p.done) {
-      store.setSending(false)
-      if (p.token) {
-        const msgs = store.messages
-        for (let i = msgs.length - 1; i >= 0; i--) {
-          if (msgs[i].role === 'assistant' && !msgs[i].content) { msgs[i].content = p.token; break }
-        }
-      }
-      if (sendResolve) { sendResolve(); sendResolve = null }
-      // Auto-TTS on done
-      if (ttsAuto.value) {
-        const idx = store.messages.length - 1
-        const last = store.messages[idx]
-        if (last?.role === 'assistant' && last.content) {
-          playTTS(stripForTTS(last.content), idx).catch(() => {})
-        }
-      }
-      return
-    }
+let unlistenChatToken: (() => void) | null = null
+let mountCancelled = false
+
+function handleChatToken(evt: { payload: { token?: string; done?: boolean } }) {
+  const p = evt.payload
+  if (p.done) {
+    store.setSending(false)
     if (p.token) {
       const msgs = store.messages
       for (let i = msgs.length - 1; i >= 0; i--) {
-        if (msgs[i].role === 'assistant') { msgs[i].content += p.token; return }
+        if (msgs[i].role === 'assistant' && !msgs[i].content) { msgs[i].content = p.token; break }
       }
-      store.addMessage({ role: 'assistant', content: p.token })
     }
-  })
-}) }
+    if (sendResolve) { sendResolve(); sendResolve = null }
+    // Auto-TTS on done
+    if (ttsAuto.value) {
+      const idx = store.messages.length - 1
+      const last = store.messages[idx]
+      if (last?.role === 'assistant' && last.content) {
+        playTTS(stripForTTS(last.content), idx).catch(() => {})
+      }
+    }
+    return
+  }
+  if (p.token) {
+    const msgs = store.messages
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === 'assistant') { msgs[i].content += p.token; return }
+    }
+    store.addMessage({ role: 'assistant', content: p.token })
+  }
+}
 
 // ── Send ──
 function send() {
@@ -92,6 +93,12 @@ async function doClear() {
 }
 
 onMounted(async () => {
+  // Register the chat_token event listener (cleaned up on unmount)
+  const { listen } = await import('@tauri-apps/api/event')
+  if (mountCancelled) return  // unmounted before listen() resolved
+  unlistenChatToken = await listen<{ token?: string; done?: boolean }>('chat_token', handleChatToken)
+  if (mountCancelled) { unlistenChatToken(); unlistenChatToken = null; return }
+
   try {
     const c = await getConfig()
     showSandbox.value = !c.system_mode
@@ -110,6 +117,12 @@ onMounted(async () => {
         .map((m: any) => ({ role: m.role as 'user' | 'assistant', content: m.content })))
     }
   } catch {}
+})
+
+onBeforeUnmount(() => {
+  mountCancelled = true
+  if (unlistenChatToken) { unlistenChatToken(); unlistenChatToken = null }
+  stopTTS()
 })
 </script>
 

@@ -23,7 +23,8 @@
 
 ### 文字/TTS 重复
 
-`import()` 被多次调用导致多个 `chat_token` 监听器。已加 `_l` 守卫。
+`chat_token` 事件监听器曾因 Vue Router 重挂载 ChatView 而累积多个副本。
+已改为 `onMounted` 注册 + `onBeforeUnmount` 清理，含快速导航竞态保护。
 
 ### 沙箱不切换
 
