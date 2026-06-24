@@ -6,9 +6,6 @@ use thiserror::Error;
 pub trait TtsProvider: Send + Sync {
     /// Synthesize text into mono PCM f32 samples.
     async fn synthesize(&self, text: &str) -> Result<Vec<f32>, TtsError>;
-
-    /// Human-readable voice name for display (e.g. "Azure Xiaoxiao").
-    fn voice_name(&self) -> &str;
 }
 
 #[derive(Debug, Error)]

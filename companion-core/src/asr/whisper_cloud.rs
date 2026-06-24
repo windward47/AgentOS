@@ -104,8 +104,4 @@ impl AsrProvider for WhisperCloud {
         Ok(text)
     }
 
-    fn switch_model(&mut self, model: &str) -> Result<(), AsrError> {
-        self.model = model.to_string();
-        Ok(())
-    }
 }

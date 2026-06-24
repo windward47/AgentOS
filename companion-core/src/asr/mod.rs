@@ -6,9 +6,6 @@ use thiserror::Error;
 pub trait AsrProvider: Send + Sync {
     /// Transcribe a mono PCM f32 audio buffer to text.
     async fn transcribe(&self, audio: &[f32]) -> Result<String, AsrError>;
-
-    /// Switch the underlying model (if applicable).
-    fn switch_model(&mut self, model: &str) -> Result<(), AsrError>;
 }
 
 #[derive(Debug, Error)]

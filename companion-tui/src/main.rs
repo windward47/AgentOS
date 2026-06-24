@@ -57,10 +57,12 @@ async fn main() {
         }
     };
 
-    // Pipe mode: activate if either flag is set; require both for correctness
+    // Pipe mode requires both --stdin and --stdout; reject partial flags
     let want_pipe = cli.stdin || cli.stdout;
     if want_pipe && !(cli.stdin && cli.stdout) {
-        eprintln!("Warning: pipe mode requires both --stdin and --stdout; running interactive TUI instead.");
+        eprintln!("Error: pipe mode requires both --stdin and --stdout.");
+        eprintln!("Usage: echo \"message\" | companion-tui --stdin --stdout");
+        std::process::exit(2);
     }
 
     if cli.stdin && cli.stdout {
@@ -110,6 +112,8 @@ async fn run_pipe_mode(config: &CompanionConfig) {
         std::process::exit(1);
     }
 
+    // TODO: pass conversation history (&[]) — pipe mode is stateless one-shot.
+    //       Future: optionally load/save session from ~/.companion/sessions/
     match agent.chat(input, &[], Some(config.custom_system_prompt.as_str())).await {
         Ok(resp) => {
             println!("{}", resp.text);

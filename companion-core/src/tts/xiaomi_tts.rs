@@ -104,7 +104,4 @@ impl TtsProvider for XiaomiTts {
         Self::decode_wav_to_pcm(&wav_bytes)
     }
 
-    fn voice_name(&self) -> &str {
-        &self.voice
-    }
 }

@@ -120,17 +120,9 @@ impl InputWidget {
             spans.push(Span::raw(text.as_str()));
             spans.push(Span::styled("▌", Style::default().fg(Color::White)));
         } else {
-            // Ensure cursor is on a char boundary
-            let cursor = if text.is_char_boundary(self.cursor) {
-                self.cursor
-            } else {
-                (0..=self.cursor)
-                    .rev()
-                    .find(|&i| text.is_char_boundary(i))
-                    .unwrap_or(0)
-            };
-
-            let (before, after) = text.split_at(cursor);
+            // Invariant: self.cursor is always on a char boundary
+            // (maintained by insert_char/backspace/delete/cursor_left/right).
+            let (before, after) = text.split_at(self.cursor);
 
             let char_end = after
                 .char_indices()

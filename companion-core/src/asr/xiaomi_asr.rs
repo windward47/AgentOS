@@ -103,7 +103,4 @@ impl AsrProvider for XiaomiAsr {
         Ok(text)
     }
 
-    fn switch_model(&mut self, _model: &str) -> Result<(), AsrError> {
-        Ok(())
-    }
 }

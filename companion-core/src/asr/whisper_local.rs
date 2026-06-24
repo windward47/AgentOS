@@ -103,8 +103,4 @@ impl AsrProvider for WhisperLocal {
         Ok(text)
     }
 
-    fn switch_model(&mut self, model: &str) -> Result<(), AsrError> {
-        self.model_path = PathBuf::from(model);
-        Ok(())
-    }
 }

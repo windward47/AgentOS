@@ -57,7 +57,7 @@ pub fn spawn_capture_manager() -> CaptureHandle {
                     // Stop any existing stream first
                     drop(stream.take());
                     stop_flag.store(false, Ordering::Relaxed);
-                    samples.lock().unwrap().clear();
+                    samples.lock().unwrap_or_else(|e| e.into_inner()).clear();
 
                     let host = cpal::default_host();
                     let device = match host.default_input_device() {
@@ -96,7 +96,7 @@ pub fn spawn_capture_manager() -> CaptureHandle {
                                     if stop.load(Ordering::Relaxed) {
                                         return;
                                     }
-                                    let mut lock = buf.lock().unwrap();
+                                    let mut lock = buf.lock().unwrap_or_else(|e| e.into_inner());
                                     if channels > 1 {
                                         lock.reserve(data.len() / channels);
                                         for (&sample, i) in data.iter().zip(0..) {
@@ -119,7 +119,7 @@ pub fn spawn_capture_manager() -> CaptureHandle {
                                     if stop.load(Ordering::Relaxed) {
                                         return;
                                     }
-                                    let mut lock = buf.lock().unwrap();
+                                    let mut lock = buf.lock().unwrap_or_else(|e| e.into_inner());
                                     if channels > 1 {
                                         lock.reserve(data.len() / channels);
                                         for (&sample, i) in data.iter().zip(0..) {
@@ -174,7 +174,7 @@ pub fn spawn_capture_manager() -> CaptureHandle {
                     std::thread::sleep(std::time::Duration::from_millis(50));
 
                     let captured = {
-                        let lock = samples.lock().unwrap();
+                        let lock = samples.lock().unwrap_or_else(|e| e.into_inner());
                         lock.clone()
                     };
 

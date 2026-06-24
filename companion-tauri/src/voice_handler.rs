@@ -143,6 +143,10 @@ pub async fn handle_voice_command(
                 match resp {
                     Ok(r) if r.status().is_success() => {
                         let bytes = r.bytes().await.unwrap_or_default();
+                        if bytes.len() < 4 || bytes.len() % 4 != 0 {
+                            log::error!("[GlobalVoice] Local TTS: invalid PCM length {}", bytes.len());
+                            return;
+                        }
                         let f32s: Vec<f32> = bytes.chunks_exact(4).map(|c| f32::from_le_bytes([c[0],c[1],c[2],c[3]])).collect();
                         f32s
                     }

@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use super::{AgentEngine, AgentError, AgentResponse, AgentStreamEvent, ConversationMessage};
+use super::{AgentEngine, AgentError, AgentResponse, ConversationMessage};
 
 #[derive(serde::Serialize, Debug)]
 struct JsonRpcRequest {
@@ -202,9 +202,6 @@ impl AgentEngine for OmpAgentSidecar {
         let mut params = serde_json::json!({ "message": message, "history": hj });
         if let Some(s) = sp { params["system_prompt"] = Value::String(s.to_string()); }
         let r = self.rpc("chat", Some(params)).await?;
-        Ok(AgentResponse { text: r.get("text").and_then(|v| v.as_str()).unwrap_or("").into(), history: vec![], emotions: vec![], tool_calls: vec![] })
-    }
-    async fn chat_stream(&self, _m: &str, _h: &[ConversationMessage]) -> Result<tokio::sync::mpsc::Receiver<AgentStreamEvent>, AgentError> {
-        Err(AgentError::NotRunning)
+        Ok(AgentResponse { text: r.get("text").and_then(|v| v.as_str()).unwrap_or("").into() })
     }
 }

@@ -38,13 +38,10 @@ pub struct ConversationMessage {
     pub content: String,
 }
 
-/// Response from the agent engine (non-streaming).
+/// Response from the agent engine.
 #[derive(Debug, Clone)]
 pub struct AgentResponse {
     pub text: String,
-    pub history: Vec<ConversationMessage>,
-    pub emotions: Vec<String>,
-    pub tool_calls: Vec<String>, // tool names that were invoked
 }
 
 /// Agent engine: sends a message and returns a complete response.
@@ -52,28 +49,6 @@ pub struct AgentResponse {
 pub trait AgentEngine: Send + Sync {
     /// Send a user message and wait for the full agent reply.
     async fn chat(&self, message: &str, history: &[ConversationMessage], system_prompt: Option<&str>) -> Result<AgentResponse, AgentError>;
-
-    /// Streamed variant — each string is either a text token or a tool-call marker.
-    async fn chat_stream(
-        &self,
-        message: &str,
-        history: &[ConversationMessage],
-    ) -> Result<tokio::sync::mpsc::Receiver<AgentStreamEvent>, AgentError>;
-}
-
-/// Events produced by the streaming chat API.
-#[derive(Debug, Clone)]
-pub enum AgentStreamEvent {
-    /// A text token (for real-time TTS or display).
-    Token(String),
-    /// The agent started executing a tool.
-    ToolStarted { name: String },
-    /// The agent finished executing a tool.
-    ToolCompleted { name: String, result: String },
-    /// The full response is complete.
-    Done,
-    /// An error occurred.
-    Error(String),
 }
 
 #[derive(Debug, Error)]
@@ -88,13 +63,4 @@ pub enum AgentError {
     AgentReturnedError(String),
     #[error("timeout waiting for agent response")]
     Timeout,
-}
-
-/// Map `CompanionConfig::llm_provider` value to an omp `--model` argument.
-pub fn provider_to_model(provider: &str) -> &'static str {
-    match provider {
-        "siliconflow" => "sensenova/mimo-v2.5",
-        "xiaomi" => "sensenova/mimo-v2.5-pro",
-        _ => "sensenova/mimo-v2.5",
-    }
 }

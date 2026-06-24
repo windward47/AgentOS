@@ -58,19 +58,23 @@ impl VoiceController {
         let capture = Arc::new(capture_mgr::spawn_capture_manager());
 
         // ── Hotkey bindings ──
+        // Fallback to Alt+` if config value is invalid. The "Alt+`" literal is
+        // hardcoded-valid, so expect() here is safe.
         let record_binding = HotkeyBinding::parse(&config.global_voice.record_hotkey)
-            .unwrap_or_else(|| HotkeyBinding::parse("Alt+`").unwrap());
+            .unwrap_or_else(|| HotkeyBinding::parse("Alt+`").expect("hardcoded valid hotkey"));
 
         // ── Hotkey channel ──
         let (hotkey_tx, hotkey_rx) = channel::unbounded::<HotkeyEvent>();
         let stop_flag = Arc::new(AtomicBool::new(false));
 
+        let aux_binding = HotkeyBinding::parse("Alt+`").expect("hardcoded valid hotkey");
+
         start_hotkey_listener(
             record_binding,
             // Auxiliary hotkeys — not used in TUI v1, but the listener requires them
-            HotkeyBinding::parse("Alt+T").unwrap_or_else(|| HotkeyBinding::parse("Alt+`").unwrap()),
-            HotkeyBinding::parse("Alt+Shift+V").unwrap_or_else(|| HotkeyBinding::parse("Alt+`").unwrap()),
-            HotkeyBinding::parse("Alt+Shift+E").unwrap_or_else(|| HotkeyBinding::parse("Alt+`").unwrap()),
+            aux_binding.clone(),
+            aux_binding.clone(),
+            aux_binding.clone(),
             hotkey_tx,
             stop_flag,
         );
@@ -95,6 +99,7 @@ impl VoiceController {
                         let _ = tx.send(VoiceEvent::ListeningStarted);
                         if !capture.start() {
                             log::error!("[Voice] Capture start failed");
+                            let _ = tx.send(VoiceEvent::ListeningStopped);
                             let _ = tx.send(VoiceEvent::Error("Mic start failed".into()));
                             recording = false;
                         }

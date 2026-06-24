@@ -1,9 +1,16 @@
 //! Audio utility functions (WAV encoding, RMS level, etc.)
 
 use hound::WavSpec;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum AudioUtilError {
+    #[error("WAV encode: {0}")]
+    Wav(String),
+}
 
 /// Encode PCM i16 samples (16 kHz, mono) into WAV bytes.
-pub fn pcm_i16_to_wav(samples: &[i16], sample_rate: u32) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+pub fn pcm_i16_to_wav(samples: &[i16], sample_rate: u32) -> Result<Vec<u8>, AudioUtilError> {
     let spec = WavSpec {
         channels: 1,
         sample_rate,
@@ -13,11 +20,11 @@ pub fn pcm_i16_to_wav(samples: &[i16], sample_rate: u32) -> Result<Vec<u8>, Box<
 
     let mut buf = Vec::new();
     {
-        let mut writer = hound::WavWriter::new(std::io::Cursor::new(&mut buf), spec)?;
+        let mut writer = hound::WavWriter::new(std::io::Cursor::new(&mut buf), spec).map_err(|e| AudioUtilError::Wav(e.to_string()))?;
         for &sample in samples {
-            writer.write_sample(sample)?;
+            writer.write_sample(sample).map_err(|e| AudioUtilError::Wav(e.to_string()))?;
         }
-        writer.finalize()?;
+        writer.finalize().map_err(|e| AudioUtilError::Wav(e.to_string()))?;
     }
     Ok(buf)
 }
@@ -28,29 +35,6 @@ pub fn f32_to_i16(audio: &[f32]) -> Vec<i16> {
         .iter()
         .map(|&s| (s * i16::MAX as f32).clamp(-32768.0, 32767.0) as i16)
         .collect()
-}
-
-/// Simple RMS energy level of a PCM i16 buffer.
-#[allow(dead_code)]
-pub fn rms_level_i16(samples: &[i16]) -> f64 {
-    if samples.is_empty() {
-        return 0.0;
-    }
-    let sum_sq: f64 = samples.iter().map(|&s| (s as f64).powi(2)).sum();
-    (sum_sq / samples.len() as f64).sqrt()
-}
-
-/// Convert RMS to a normalized 0..1 level.
-#[allow(dead_code)]
-pub fn normalized_level(rms: f64) -> f64 {
-    let level = rms / 16384.0;
-    level.clamp(0.0, 1.0)
-}
-
-/// Duration in seconds given sample count and rate.
-#[allow(dead_code)]
-pub fn duration_seconds(sample_count: usize, sample_rate: u32) -> f64 {
-    sample_count as f64 / sample_rate as f64
 }
 
 #[cfg(test)]
@@ -74,16 +58,5 @@ mod tests {
         assert_eq!(i16_samples[0], 0);
         assert!(i16_samples[1] > 16000);
         assert!(i16_samples[3] >= 32767);
-    }
-
-    #[test]
-    fn test_rms_silence() {
-        let samples = vec![0i16; 100];
-        assert!(rms_level_i16(&samples) < 1.0);
-    }
-
-    #[test]
-    fn test_duration() {
-        assert!((duration_seconds(16000, 16000) - 1.0).abs() < 0.001);
     }
 }

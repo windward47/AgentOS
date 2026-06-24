@@ -2,7 +2,7 @@
 //!
 //! Orchestrates:
 //! - ratatui rendering (status + chat + input)
-//! - Keyboard input (type text, Enter to send, Ctrl+C/q to quit)
+//! - Keyboard input (type text, Enter to send, Ctrl+C / q / Esc to quit)
 //! - Voice events (hotkey PTT → ASR → auto-send)
 //! - Streaming sidecar tokens (display tokens as they arrive)
 
@@ -14,7 +14,7 @@ use companion_core::agent::omp_sidecar::OmpAgentSidecar;
 use companion_core::config::CompanionConfig;
 
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind},
+    event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -49,6 +49,13 @@ pub async fn run(config: CompanionConfig) {
     let mut terminal = ratatui::Terminal::new(ratatui::backend::CrosstermBackend::new(stdout))
         .expect("create terminal");
 
+    // ── Set up panic hook to restore terminal on crash ──
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        cleanup();
+        default_hook(info);
+    }));
+
     // ── Spawn sidecar agent ──
     let agent = Arc::new(OmpAgentSidecar::new());
     if let Err(e) = agent.spawn().await {
@@ -71,13 +78,6 @@ pub async fn run(config: CompanionConfig) {
     let mut stream_rx: Option<tokio::sync::mpsc::Receiver<StreamSignal>> = None;
     let mut stream_handle: Option<tokio::task::JoinHandle<()>> = None;
 
-    // ── Set up panic hook to restore terminal on crash ──
-    let default_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        cleanup();
-        default_hook(info);
-    }));
-
     // ── Main event loop ──
     loop {
         // ── Poll keyboard events (non-blocking) ──
@@ -85,7 +85,7 @@ pub async fn run(config: CompanionConfig) {
             Ok(true) => {
                 match event::read() {
                     Ok(Event::Key(key)) if key.kind != KeyEventKind::Release => {
-                        handle_key(key.code, &mut input, &mut chat, agent.clone(), &mut stream_rx, &mut stream_handle, &mut state)
+                        handle_key(&key, &mut input, &mut chat, agent.clone(), &mut stream_rx, &mut stream_handle, &mut state)
                     }
                     Err(e) => {
                         log::error!("event::read error: {e}");
@@ -117,25 +117,21 @@ pub async fn run(config: CompanionConfig) {
                 VoiceEvent::TextReady(text) => {
                     // Auto-send via agent
                     chat.add_user(&text);
-                    start_stream(
-                        agent.clone(),
-                        text,
-                        &mut stream_rx,
-                        &mut stream_handle,
-                        &mut chat,
-                    );
+                    start_stream(agent.clone(), text, &mut stream_rx, &mut stream_handle, &mut chat);
                     state = AppState::Processing;
                 }
                 VoiceEvent::Error(err) => {
                     log::error!("Voice error: {err}");
-                    // Silently ignore — don't disrupt the UI
+                    // Reset state on voice error — don't leave UI stuck
+                    if state == AppState::Listening {
+                        state = AppState::Idle;
+                    }
                 }
             }
         }
 
         // ── Poll streaming tokens ──
-        let stream_finished = stream_rx.is_none();
-        if !stream_finished {
+        if stream_rx.is_some() {
             let mut done = false;
             if let Some(ref mut rx) = stream_rx {
                 loop {
@@ -162,29 +158,31 @@ pub async fn run(config: CompanionConfig) {
             }
             if done {
                 stream_rx = None;
-                // Check if the spawned task finished (panics are logged by tokio)
-                if let Some(ref handle) = stream_handle {
-                    if handle.is_finished() {
-                        log::debug!("Stream task completed");
-                    }
-                }
+                stream_handle = None;
                 state = AppState::Idle;
             }
         }
 
-        // ── Render ──
-        terminal
-            .draw(|frame| render_ui(frame, &chat, &input, state))
-            .expect("draw frame");
+        // ── Render (non-fatal: log + continue on error) ──
+        if let Err(e) = terminal.draw(|frame| render_ui(frame, &mut chat, &input, state)) {
+            log::error!("Terminal draw error: {e} — continuing");
+            // Brief sleep to avoid busy-loop on persistent render errors
+            std::thread::sleep(Duration::from_millis(50));
+        }
     }
 
-    // ── Cleanup ──
+    // ── Cleanup: abort in-flight stream task before exit ──
+    if let Some(handle) = stream_handle.take() {
+        handle.abort();
+        log::debug!("Aborted in-flight stream task on exit");
+    }
+
     cleanup();
 }
 
 /// Handle a single key event. Returns true if the app should quit.
 fn handle_key(
-    code: KeyCode,
+    key: &KeyEvent,
     input: &mut InputWidget,
     chat: &mut ChatWidget,
     agent: Arc<OmpAgentSidecar>,
@@ -192,10 +190,20 @@ fn handle_key(
     stream_handle: &mut Option<tokio::task::JoinHandle<()>>,
     state: &mut AppState,
 ) -> bool {
-    match code {
-        KeyCode::Char('q') if cfg!(debug_assertions) => return true,
+    // ── Quit keys: Ctrl+C, q, Esc — work in all builds ──
+    match key.code {
+        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => return true,
+        KeyCode::Char('q') => return true,
         KeyCode::Esc => return true,
+        _ => {}
+    }
+
+    match key.code {
         KeyCode::Char(c) => {
+            // Ignore Ctrl+<char> combinations (except Ctrl+C handled above)
+            if key.modifiers.contains(KeyModifiers::CONTROL) {
+                return false;
+            }
             input.insert_char(c);
         }
         KeyCode::Backspace => {
@@ -239,6 +247,7 @@ fn handle_key(
 }
 
 /// Start a streaming agent request.
+/// If a previous stream is in-flight, abort it before starting the new one.
 fn start_stream(
     agent: Arc<OmpAgentSidecar>,
     message: String,
@@ -246,6 +255,13 @@ fn start_stream(
     stream_handle: &mut Option<tokio::task::JoinHandle<()>>,
     chat: &mut ChatWidget,
 ) {
+    // ── Abort previous in-flight stream if any ──
+    if let Some(old_handle) = stream_handle.take() {
+        log::debug!("Aborting previous stream before starting new one");
+        old_handle.abort();
+    }
+    *stream_rx = None;
+
     chat.start_ai();
 
     let agent = agent.clone();
@@ -290,7 +306,7 @@ fn start_stream(
 }
 
 /// Render the full TUI layout.
-fn render_ui(frame: &mut Frame, chat: &ChatWidget, input: &InputWidget, state: AppState) {
+fn render_ui(frame: &mut Frame, chat: &mut ChatWidget, input: &InputWidget, state: AppState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([

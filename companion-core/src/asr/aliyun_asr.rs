@@ -127,7 +127,4 @@ impl AsrProvider for AliyunAsr {
         Ok(resp.result.unwrap_or_default().trim().to_string())
     }
 
-    fn switch_model(&mut self, _model: &str) -> Result<(), AsrError> {
-        Ok(())
-    }
 }

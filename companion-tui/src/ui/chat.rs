@@ -4,7 +4,7 @@ use ratatui::{
     layout::Rect,
     style::{Color, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph, Wrap},
+    widgets::{Block, Paragraph},
     Frame,
 };
 
@@ -81,7 +81,7 @@ impl ChatWidget {
     }
 
     /// Render the chat area.
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
+    pub fn render(&mut self, frame: &mut Frame, area: Rect) {
         let mut lines: Vec<Line> = Vec::new();
 
         for msg in &self.messages {
@@ -109,13 +109,19 @@ impl ChatWidget {
             lines.push(Line::from(""));
         }
 
+        // ── Clamp scroll to actual content height ──
+        let total_lines = lines.len() as u16;
+        let visible = area.height;
+        let max_scroll = total_lines.saturating_sub(visible);
+        if self.scroll > max_scroll {
+            self.scroll = max_scroll;
+        }
+
         let block = Block::default()
-            .borders(Borders::NONE)
             .style(Style::default());
 
         let para = Paragraph::new(Text::from(lines))
             .block(block)
-            .wrap(Wrap { trim: false })
             .scroll((self.scroll, 0));
 
         frame.render_widget(para, area);
