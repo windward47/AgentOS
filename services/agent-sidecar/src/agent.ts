@@ -3,6 +3,8 @@
  */
 import { Agent, type AgentEvent, type AgentTool } from "@oh-my-pi/pi-agent-core";
 import type { Api, Model } from "@oh-my-pi/pi-ai";
+import { createTools, type ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
+import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { buildPiModel, loadCompanionConfig, saveCompanionConfig, type CompanionConfig } from "./config";
 import { sandboxResolve, hasDangerousChars, isHighRisk, logAudit } from "./sandbox";
 
@@ -51,7 +53,10 @@ async function webSearch(query: string) {
     return { content: [{ type: "text" as const, text: `Search unavailable for "${query}". Try a different query or check internet.` }] };
 }
 
-// ── File & system tools (Bun native) ───────────────────────────────────
+// ── omp coding-agent tools (loaded via createTools) ───────────────────
+// read/bash/edit/write/glob/grep/ast_grep/ast_edit/todo are provided by
+// @oh-my-pi/pi-coding-agent. Their cwd follows system_mode (sandbox_path
+// when off, home when on). See AgentManager.loadOmpTools().
 
 import { readFileSync, writeFileSync, existsSync, unlinkSync, rmdirSync, statSync, mkdirSync, readdirSync } from "node:fs";
 import { execSync } from "node:child_process";
@@ -59,127 +64,6 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { Glob } from "bun";
 import { MemoryManager } from "./memory-manager";
-
-const TOOL_READ: AgentTool = {
-    name: "read",
-    label: "Read File",
-    description: "Read the contents of a file. Use this to check file contents, read code, or inspect documents.",
-    parameters: { type: "object", properties: { path: { type: "string", description: "Path to the file" } }, required: ["path"] },
-    execute: async (_id, params: any) => {
-        try {
-            const text = readFileSync(params.path, "utf-8").slice(0, 20000);
-            return { content: [{ type: "text" as const, text: text || "(empty file)" }] };
-        } catch (err: any) {
-            return { content: [{ type: "text" as const, text: `Read error: ${err.message}` }] };
-        }
-    },
-};
-
-const TOOL_WRITE: AgentTool = {
-    name: "write",
-    label: "Write File",
-    description: "Write content to a file. Creates the file if it doesn't exist, overwrites if it does.",
-    parameters: {
-        type: "object",
-        properties: { path: { type: "string" }, content: { type: "string" } },
-        required: ["path", "content"],
-    },
-    execute: async (_id, params: any) => {
-        try {
-            writeFileSync(params.path, params.content, "utf-8");
-            return { content: [{ type: "text" as const, text: `Wrote ${params.content.length} bytes to ${params.path}` }] };
-        } catch (err: any) {
-            return { content: [{ type: "text" as const, text: `Write error: ${err.message}` }] };
-        }
-    },
-};
-
-const TOOL_SEARCH: AgentTool = {
-    name: "search",
-    label: "Search Files",
-    description: "Search for a text pattern in files under a directory. Returns matching files with line numbers.",
-    parameters: {
-        type: "object",
-        properties: {
-            pattern: { type: "string", description: "Text or regex to search for" },
-            path: { type: "string", description: "Directory to search in (default: current directory)" },
-        },
-        required: ["pattern"],
-    },
-    execute: async (_id, params: any) => {
-        try {
-            const pattern = params.pattern;
-            const dir = params.path || ".";
-            const glob = new Glob("**/*");
-            let output = "";
-            for (const file of glob.scanSync({ cwd: dir, absolute: true })) {
-                if (file.length > 500_000) continue; // skip large files
-                try {
-                    const content = readFileSync(file, "utf-8");
-                    const lines = content.split("\n");
-                    for (let i = 0; i < lines.length; i++) {
-                        if (lines[i].includes(pattern)) {
-                            output += `${file}:${i + 1}: ${lines[i].trim().slice(0, 200)}\n`;
-                            if (output.length > 8000) { output += "...(truncated)\n"; break; }
-                        }
-                    }
-                } catch {}
-                if (output.length > 8000) break;
-            }
-            return { content: [{ type: "text" as const, text: output || `No matches for "${pattern}"` }] };
-        } catch (err: any) {
-            return { content: [{ type: "text" as const, text: `Search error: ${err.message}` }] };
-        }
-    },
-};
-
-const TOOL_FIND: AgentTool = {
-    name: "find",
-    label: "Find Files",
-    description: "Find files matching a glob pattern. Use this to locate files by name.",
-    parameters: {
-        type: "object",
-        properties: {
-            pattern: { type: "string", description: "Glob pattern (e.g. **/*.ts, *.json)" },
-            path: { type: "string", description: "Directory to search in (default: current directory)" },
-        },
-        required: ["pattern"],
-    },
-    execute: async (_id, params: any) => {
-        try {
-            const dir = params.path || ".";
-            const glob = new Glob(params.pattern);
-            const results: string[] = [];
-            for (const file of glob.scanSync({ cwd: dir, absolute: true })) {
-                results.push(file);
-                if (results.length >= 100) break;
-            }
-            const text = results.length > 0 ? results.join("\n") : `No files matching "${params.pattern}"`;
-            return { content: [{ type: "text" as const, text }] };
-        } catch (err: any) {
-            return { content: [{ type: "text" as const, text: `Find error: ${err.message}` }] };
-        }
-    },
-};
-
-const TOOL_BASH: AgentTool = {
-    name: "bash",
-    label: "Run Command",
-    description: "Execute a shell command and return its output. Use for system operations. Avoid destructive commands.",
-    parameters: {
-        type: "object",
-        properties: { command: { type: "string", description: "Shell command to execute" } },
-        required: ["command"],
-    },
-    execute: async (_id, params: any) => {
-        try {
-            const output = execSync(params.command, { timeout: 30000, maxBuffer: 100 * 1024, encoding: "utf-8", shell: process.env.ComSpec || "cmd.exe" });
-            return { content: [{ type: "text" as const, text: output || "(no output)" }] };
-        } catch (err: any) {
-            return { content: [{ type: "text" as const, text: `Command error: ${err.stderr || err.message}` }] };
-        }
-    },
-};
 
 export interface AgentCallbacks {
     onToken: (token: string) => void;
@@ -437,6 +321,10 @@ export class AgentManager {
     private currentConversationId: string;
     private autoTitled = false;
     private memory: MemoryManager;
+    /** Isolated in-memory Settings for omp coding-agent tools (created once, reused). */
+    private toolSettings: Settings | null = null;
+    /** Resolves when the async agent build (incl. omp tool loading) completes. chatStream awaits this. */
+    private agentInit: Promise<void> = Promise.resolve();
 
     constructor() {
         this.companionConfig = loadCompanionConfig();
@@ -471,24 +359,65 @@ export class AgentManager {
             this.messageHistory = [];
             this.autoTitled = false;
         }
-        this.agent = this.createAgent();
+        // Build a placeholder agent synchronously so this.agent is never null;
+        // the real agent (with omp coding tools) is built asynchronously.
+        this.agent = this.createPlaceholderAgent();
+        this.agentInit = this.rebuildAgent();
     }
 
-    private createAgent(): Agent {
+    /** Minimal synchronous Agent used until the async build (with omp tools) completes. */
+    private createPlaceholderAgent(): Agent {
         const sp = this.companionConfig.custom_system_prompt
-            || "Companion — a helpful desktop AI assistant.";
-        const agent = new Agent({
-            initialState: {
-                systemPrompt: [sp],
-                model: this.model as any,
-            },
+            || "Companion - a helpful desktop AI assistant.";
+        return new Agent({
+            initialState: { systemPrompt: [sp], model: this.model as any },
             getApiKey: () => this.apiKey,
         });
-        // Tools: sandbox tools always available; unrestricted file tools only in system_mode
+    }
+
+    /**
+     * Load omp coding-agent tools (read/bash/edit/write/glob/grep/ast_grep/ast_edit/todo).
+     * cwd follows system_mode: sandbox_path when off, home when on.
+     * Tools are constructed per call (they close over the session); the Settings
+     * instance is created once and reused across rebuilds.
+     */
+    private async loadOmpTools(): Promise<AgentTool[]> {
+        if (!this.toolSettings) {
+            this.toolSettings = Settings.isolated({});
+        }
+        const cwd = this.companionConfig.system_mode
+            ? homedir()
+            : this.companionConfig.sandbox_path;
+        const session: ToolSession = {
+            cwd,
+            hasUI: false,
+            enableLsp: false,
+            settings: this.toolSettings,
+            getSessionFile: () => null,
+            getSessionSpawns: () => null,
+            skipPythonPreflight: true,
+        } as ToolSession;
+        return await createTools(session, [
+            "read", "bash", "edit", "write",
+            "find", "search", "ast_grep", "ast_edit", "todo",
+        ]);
+    }
+
+    /**
+     * Rebuild the Agent with omp coding tools. Async (createTools / Settings).
+     * Stored in this.agentInit so chatStream can await completion.
+     */
+    private async rebuildAgent(): Promise<void> {
+        const sp = this.companionConfig.custom_system_prompt
+            || "Companion - a helpful desktop AI assistant.";
+        const agent = new Agent({
+            initialState: { systemPrompt: [sp], model: this.model as any },
+            getApiKey: () => this.apiKey,
+        });
         const sandboxTools = makeSandboxTools(this.companionConfig.sandbox_path);
-        const tools: AgentTool[] = [...sandboxTools, WEB_SEARCH_TOOL, WEB_FETCH_TOOL];
+        const ompTools = await this.loadOmpTools();
+        const tools: AgentTool[] = [...sandboxTools, ...ompTools, WEB_SEARCH_TOOL, WEB_FETCH_TOOL];
         if (this.companionConfig.system_mode) {
-            tools.push(TOOL_READ, TOOL_WRITE, TOOL_SEARCH, TOOL_FIND, TOOL_BASH);
             tools.push({
                 name: "get_user_paths",
                 label: "Get User Paths",
@@ -506,24 +435,23 @@ export class AgentManager {
             });
         }
         tools.push({
-                name: "memory_retain",
-                label: "Remember Fact",
-                description: "Store an important fact about the user or context into long-term memory. Use this when the user shares preferences, personal info, or important decisions. The fact should be a concise summary (one sentence).",
-                parameters: {
-                    type: "object",
-                    properties: {
-                        fact: { type: "string", description: "A concise fact to remember (e.g. 'User prefers dark mode', 'Project uses Rust+Tauri')" },
-                    },
-                    required: ["fact"],
+            name: "memory_retain",
+            label: "Remember Fact",
+            description: "Store an important fact about the user or context into long-term memory. Use this when the user shares preferences, personal info, or important decisions. The fact should be a concise summary (one sentence).",
+            parameters: {
+                type: "object",
+                properties: {
+                    fact: { type: "string", description: "A concise fact to remember (e.g. 'User prefers dark mode', 'Project uses Rust+Tauri')" },
                 },
-                execute: async (_id: string, params: any) => {
-                    this.memory.retainMemory(params.fact);
-                    return { content: [{ type: "text" as const, text: `✓ Remembered: ${params.fact}` }] };
-                },
+                required: ["fact"],
             },
-        );
+            execute: async (_id: string, params: any) => {
+                this.memory.retainMemory(params.fact);
+                return { content: [{ type: "text" as const, text: `✓ Remembered: ${params.fact}` }] };
+            },
+        });
         agent.setTools(tools);
-        return agent;
+        this.agent = agent;
     }
 
     getCompanionConfig(): CompanionConfig {
@@ -546,7 +474,7 @@ export class AgentManager {
                     modelSpec: { id: cfg.llm.model || "mimo-v2.5", name: cfg.llm.model || "mimo-v2.5", input: ["text"], contextWindow: 32768, maxTokens: 16384 },
                 });
             }
-            this.agent = this.createAgent();
+            this.agentInit = this.rebuildAgent();
         }
         return this.companionConfig;
     }
@@ -767,7 +695,7 @@ export class AgentManager {
     }
 
     async chat(message: string, _history?: Array<{ role: string; content: string }>, _systemPrompt?: string): Promise<{ text: string; history: Array<{ role: string; content: string }>; emotions?: string[] }> {
-        // Recall relevant memories (2s timeout — don't block first token)
+        await this.agentInit;
         const memoryCtx = await Promise.race([
             this.recallMemories(message),
             new Promise<string>(r => setTimeout(() => r(""), 2000)),
@@ -809,6 +737,9 @@ export class AgentManager {
     }
 
     async chatStream(message: string, history?: Array<{ role: string; content: string }>, _systemPrompt?: string, callbacks?: AgentCallbacks): Promise<void> {
+        // Wait for the async agent build (omp coding tools) to finish before
+        // prompting - otherwise we'd run against the tool-less placeholder.
+        await this.agentInit;
         // Recall relevant memories (1s timeout)
         const memoryCtx = await Promise.race([
             this.recallMemories(message),
@@ -842,7 +773,7 @@ export class AgentManager {
                                 const delta = String(event.assistantMessageEvent.delta ?? "");
                                 fullText += delta;
                                 callbacks!.onToken(delta);
-                            } else if ((event.assistantMessageEvent as any).type === "reasoning_delta") {
+                            } else if ((event.assistantMessageEvent as any).type === "thinking_delta") {
                                 // Reasoning models emit thinking tokens — capture as regular tokens
                                 const delta = String((event.assistantMessageEvent as any).delta ?? "");
                                 callbacks!.onToken(delta);

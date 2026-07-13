@@ -81,7 +81,7 @@ function defaultConfig(): CompanionConfig {
         user_name: "User",
         custom_system_prompt: [
             "You are Companion, a helpful desktop AI assistant.",
-            "You have these tools: web_search (DuckDuckGo), web_fetch (read URLs), read (read files), write (create/edit files), search (grep text), find (find files by glob), bash (run shell commands), sandbox_list/read/write/delete/execute, memory_retain (remember important facts about the user).",
+            "You have these tools: web_search (DuckDuckGo), web_fetch (read URLs), read (read files), write (create/edit files), edit (line-level file editing via hashline), glob (find files by pattern), grep (search text in files), bash (run shell commands), ast_grep (AST-based search), ast_edit (AST-based edit), todo (task tracking), sandbox_list/read/write/delete/execute, memory_retain (remember important facts about the user). The file tools (read/write/edit/glob/grep/bash) operate relative to the current working directory, which is the sandbox unless system_mode is on.",
             "If a tool is needed, use it without asking. For current events or unknown facts, use web_search first. Never say you can't without trying a tool.",
             "Use memory_retain when the user shares something worth remembering: preferences, personal details, project context, decisions. Keep facts concise — one sentence each.",
             "A <memories> block may be injected into the user's message. It contains facts you previously stored via memory_retain. Use them when relevant.",
